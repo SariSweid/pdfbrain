@@ -1,40 +1,17 @@
-import { useState } from "react";
-
 import Sidebar from "../components/Sidebar";
 import ChatMessage from "../components/ChatMessage";
 import ChatInput from "../components/ChatInput";
-
-import { initialDocuments, initialMessages } from "../data/mockData";
+import useChat from "../hooks/useChat";
 
 function ChatPage() {
-  const [documents] = useState(initialDocuments);
-  const [messages, setMessages] = useState(initialMessages);
-  const [inputValue, setInputValue] = useState("");
-
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-
-    if (!inputValue.trim()) return;
-
-    const userMessage = {
-      id: Date.now(),
-      sender: "user",
-      text: inputValue,
-    };
-
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
-    setInputValue("");
-
-    setTimeout(() => {
-      const botMessage = {
-        id: Date.now() + 1,
-        sender: "bot",
-        text: "קיבלתי את השאלה שלך. אני מנתח את המסמך כרגע...",
-      };
-
-      setMessages((prevMessages) => [...prevMessages, botMessage]);
-    }, 800);
-  };
+  const {
+    documents,
+    messages,
+    inputValue,
+    setInputValue,
+    handleSendMessage,
+    loading,
+  } = useChat();
 
   return (
     <div className="flex h-full">
@@ -45,12 +22,17 @@ function ChatPage() {
           {messages.map((message) => (
             <ChatMessage key={message.id} message={message} />
           ))}
+
+          {loading && (
+            <p className="text-sm text-gray-500">PDFBrain is thinking...</p>
+          )}
         </div>
 
         <ChatInput
           inputValue={inputValue}
           setInputValue={setInputValue}
           onSendMessage={handleSendMessage}
+          loading={loading}
         />
       </section>
     </div>

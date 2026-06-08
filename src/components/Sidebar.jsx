@@ -1,10 +1,10 @@
+import UploadButton from "./UploadButton";
+
 function Sidebar({ documents }) {
   return (
     <aside className="w-1/4 bg-white border-l border-gray-200 flex flex-col">
       <div className="p-4 border-b">
-        <button className="w-full bg-indigo-600 text-white rounded-lg py-2 font-bold hover:bg-indigo-700 transition shadow-md">
-          + העלאת PDF חדש
-        </button>
+        <UploadButton />
       </div>
 
       <div className="flex-1 overflow-y-auto">
