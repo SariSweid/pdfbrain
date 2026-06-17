@@ -45,6 +45,36 @@ function useChat() {
     loadMessages();
   }, [selectedDocumentId]);
 
+  // Automatically generate a summary for a selected document if it doesn't
+  // already have one cached.
+  useEffect(() => {
+    let mounted = true;
+    async function ensureSummary() {
+      if (!selectedDocument) return;
+      if (selectedDocument.summary) return;
+
+      setSummaryLoading(true);
+      try {
+        const summary = await generateSummary(selectedDocument);
+        if (!mounted) return;
+
+        setDocuments((prevDocuments) =>
+          prevDocuments.map((doc) => (doc.id === selectedDocument.id ? { ...doc, summary } : doc))
+        );
+      } catch (err) {
+        console.error("לא הצלחנו להפיק תקציר אוטומטי:", err);
+      } finally {
+        if (mounted) setSummaryLoading(false);
+      }
+    }
+
+    ensureSummary();
+
+    return () => {
+      mounted = false;
+    };
+  }, [selectedDocument?.id]);
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
 
@@ -114,22 +144,7 @@ function useChat() {
     });
   };
 
-  const handleGenerateSummary = async () => {
-    if (!selectedDocument) return;
-
-    setSummaryLoading(true);
-
-    try {
-      const summary = await generateSummary(selectedDocument);
-      setDocuments((prevDocuments) =>
-        prevDocuments.map((doc) =>
-          doc.id === selectedDocument.id ? { ...doc, summary } : doc
-        )
-      );
-    } finally {
-      setSummaryLoading(false);
-    }
-  };
+  // summaryGeneration handled automatically via effect above
 
   return {
     documents,
@@ -142,8 +157,6 @@ function useChat() {
     setInputValue,
     handleSendMessage,
     handleUploadDocument,
-    handleGenerateSummary,
-    summaryLoading,
     loading,
     uploadError,
   };

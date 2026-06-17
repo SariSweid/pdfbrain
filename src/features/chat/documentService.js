@@ -6,6 +6,7 @@ import {
   saveDocument,
   addHistoryEvent,
 } from "../../lib/localStore";
+import { generateSummary } from "./chatService";
 
 export async function fetchInitialDocuments() {
   return getDocuments();
@@ -71,6 +72,14 @@ export async function uploadDocument(file) {
     label: "העלאת מאמר",
     date: document.date,
   });
+
+  // Automatically generate and persist a short summary for the uploaded document
+  try {
+    const summary = await generateSummary(document);
+    document.summary = summary;
+  } catch (err) {
+    console.error("לא הצלחנו להפיק תקציר אוטומטי עבור המאמר:", err);
+  }
 
   return document;
 }

@@ -44,10 +44,21 @@ export async function sendChatMessage({ document, question, chatHistory }) {
     maxTokens: 1000,
   });
 
+  // Clean up model output: remove code fences, excessive whitespace, and surrounding quotes
+  const cleaned = answerText
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/^```+/g, "")
+    .replace(/```+$/g, "")
+    .replace(/^["'`\s]+|["'`\s]+$/g, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[\t ]{2,}/g, " ")
+    .trim();
+
   const botMessage = {
     id: crypto.randomUUID(),
     sender: "bot",
-    text: answerText,
+    text: cleaned,
     createdAt: Date.now(),
   };
   await appendMessage(document.id, botMessage);

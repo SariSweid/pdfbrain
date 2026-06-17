@@ -16,8 +16,6 @@ function ChatPage() {
     setInputValue,
     handleSendMessage,
     handleUploadDocument,
-    handleGenerateSummary,
-    summaryLoading,
     loading,
     uploadError,
   } = useChat();
@@ -35,11 +33,7 @@ function ChatPage() {
 
       <section className="w-3/4 flex flex-col bg-slate-50 relative overflow-hidden">
         <div className="flex-1 overflow-y-auto p-6 space-y-4 pb-24">
-          <DocumentAnalysisPanel
-            document={selectedDocument}
-            onGenerateSummary={handleGenerateSummary}
-            summaryLoading={summaryLoading}
-          />
+          <DocumentAnalysisPanel document={selectedDocument} />
 
           {selectedDocument && messages.length === 0 && (
             <p className="text-sm text-gray-400 text-center py-6">

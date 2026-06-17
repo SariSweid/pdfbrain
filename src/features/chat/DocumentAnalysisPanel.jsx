@@ -1,6 +1,6 @@
 import { exportSummaryToWord, exportSummaryToPdf } from "../../lib/exportUtils";
 
-function DocumentAnalysisPanel({ document, onGenerateSummary, summaryLoading }) {
+function DocumentAnalysisPanel({ document }) {
   if (!document) {
     return (
       <div className="bg-white border border-gray-200 rounded-lg p-5 text-center text-gray-400 text-sm">
@@ -46,21 +46,8 @@ function DocumentAnalysisPanel({ document, onGenerateSummary, summaryLoading }) 
       )}
 
       <div className="border-t border-gray-100 pt-3">
-        <div className="flex items-center justify-between gap-3 mb-1">
+        <div className="mb-1">
           <p className="text-sm font-semibold text-gray-700">תקציר אוטומטי (AI)</p>
-
-          <button
-            type="button"
-            onClick={onGenerateSummary}
-            disabled={summaryLoading}
-            className="text-xs font-bold text-indigo-600 hover:text-indigo-800 disabled:text-gray-400"
-          >
-            {summaryLoading
-              ? "מפיק תקציר..."
-              : document.summary
-              ? "הפק מחדש"
-              : "הפק תקציר"}
-          </button>
         </div>
 
         {document.summary ? (
