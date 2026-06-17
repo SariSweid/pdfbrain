@@ -100,8 +100,8 @@ function useChat() {
     setSelectedDocumentId(documentId);
   };
 
-  const handleDeleteDocument = (documentId) => {
-    deleteDocument(documentId);
+  const handleDeleteDocument = async (documentId) => {
+    await deleteDocument(documentId);
 
     setDocuments((prevDocuments) => {
       const next = prevDocuments.filter((doc) => doc.id !== documentId);

@@ -1,14 +1,26 @@
-// Local persistence layer.
+// Persistence layer.
 //
-// Data is namespaced per-user (so when real Firebase Auth lands, switching
-// is just a matter of swapping the storage backend — the shape of the data
-// below mirrors what Firestore collections would look like:
-//   documents/{docId}
-//   documents/{docId}/messages/{messageId}
-//   historyEvents/{eventId}
-//   comparisons/{comparisonId}
+// With Firebase Auth + Firestore configured, data is saved under the current
+// user. Without Firebase, the app falls back to localStorage for demo/local use.
+//
+// Firestore shape:
+//   users/{uid}/documents/{docId}
+//   users/{uid}/documents/{docId}/messages/{messageId}
+//   users/{uid}/historyEvents/{eventId}
+//   users/{uid}/comparisons/{comparisonId}
 
-import { auth } from "./firebase";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+} from "firebase/firestore";
+
+import { auth, db, isFirebaseConfigured } from "./firebase";
 
 const STORAGE_KEYS = {
   documents: "pdfbrain:documents",
@@ -37,40 +49,87 @@ function readJSON(key, fallback) {
 }
 
 function writeJSON(key, value) {
-  localStorage.setItem(
-    getUserStorageKey(key),
-    JSON.stringify(value)
+  localStorage.setItem(getUserStorageKey(key), JSON.stringify(value));
+}
+
+function shouldUseFirestore() {
+  return Boolean(isFirebaseConfigured && db && auth?.currentUser?.uid);
+}
+
+function userCollection(collectionName) {
+  return collection(db, "users", auth.currentUser.uid, collectionName);
+}
+
+function userDoc(collectionName, id) {
+  return doc(db, "users", auth.currentUser.uid, collectionName, id);
+}
+
+async function readUserCollection(collectionName, sortField = "createdAt", direction = "desc") {
+  const snapshot = await getDocs(
+    query(userCollection(collectionName), orderBy(sortField, direction))
   );
+
+  return snapshot.docs.map((snapshotDoc) => ({
+    id: snapshotDoc.id,
+    ...snapshotDoc.data(),
+  }));
 }
 
 // ---------- Documents ----------
 
-export function getDocuments() {
+export async function getDocuments() {
+  if (shouldUseFirestore()) {
+    return readUserCollection("documents");
+  }
+
   return readJSON(STORAGE_KEYS.documents, []);
 }
 
-export function getDocumentById(documentId) {
-  return getDocuments().find((doc) => doc.id === documentId) ?? null;
+export async function getDocumentById(documentId) {
+  const documents = await getDocuments();
+  return documents.find((paperDocument) => paperDocument.id === documentId) ?? null;
 }
 
-export function saveDocument(document) {
-  const documents = getDocuments();
-  const next = [document, ...documents];
+export async function saveDocument(paperDocument) {
+  if (shouldUseFirestore()) {
+    await setDoc(userDoc("documents", paperDocument.id), paperDocument);
+    return paperDocument;
+  }
+
+  const documents = await getDocuments();
+  const next = [paperDocument, ...documents];
   writeJSON(STORAGE_KEYS.documents, next);
-  return document;
+  return paperDocument;
 }
 
-export function updateDocument(documentId, patch) {
-  const documents = getDocuments();
-  const next = documents.map((doc) =>
-    doc.id === documentId ? { ...doc, ...patch } : doc
+export async function updateDocument(documentId, patch) {
+  if (shouldUseFirestore()) {
+    await updateDoc(userDoc("documents", documentId), patch);
+    return getDocumentById(documentId);
+  }
+
+  const documents = await getDocuments();
+  const next = documents.map((paperDocument) =>
+    paperDocument.id === documentId ? { ...paperDocument, ...patch } : paperDocument
   );
   writeJSON(STORAGE_KEYS.documents, next);
-  return next.find((doc) => doc.id === documentId) ?? null;
+  return next.find((paperDocument) => paperDocument.id === documentId) ?? null;
 }
 
-export function deleteDocument(documentId) {
-  const documents = getDocuments().filter((doc) => doc.id !== documentId);
+export async function deleteDocument(documentId) {
+  if (shouldUseFirestore()) {
+    const messagesSnapshot = await getDocs(
+      collection(db, "users", auth.currentUser.uid, "documents", documentId, "messages")
+    );
+
+    await Promise.all(messagesSnapshot.docs.map((messageDoc) => deleteDoc(messageDoc.ref)));
+    await deleteDoc(userDoc("documents", documentId));
+    return;
+  }
+
+  const documents = (await getDocuments()).filter(
+    (paperDocument) => paperDocument.id !== documentId
+  );
   writeJSON(STORAGE_KEYS.documents, documents);
 
   const allMessages = readJSON(STORAGE_KEYS.messages, {});
@@ -80,12 +139,35 @@ export function deleteDocument(documentId) {
 
 // ---------- Chat messages (per document) ----------
 
-export function getMessages(documentId) {
+export async function getMessages(documentId) {
+  if (shouldUseFirestore()) {
+    const snapshot = await getDocs(
+      query(
+        collection(db, "users", auth.currentUser.uid, "documents", documentId, "messages"),
+        orderBy("createdAt", "asc")
+      )
+    );
+
+    return snapshot.docs.map((snapshotDoc) => ({
+      id: snapshotDoc.id,
+      ...snapshotDoc.data(),
+    }));
+  }
+
   const allMessages = readJSON(STORAGE_KEYS.messages, {});
   return allMessages[documentId] ?? [];
 }
 
-export function appendMessage(documentId, message) {
+export async function appendMessage(documentId, message) {
+  if (shouldUseFirestore()) {
+    await setDoc(
+      doc(db, "users", auth.currentUser.uid, "documents", documentId, "messages", message.id),
+      message
+    );
+
+    return message;
+  }
+
   const allMessages = readJSON(STORAGE_KEYS.messages, {});
   const existing = allMessages[documentId] ?? [];
   allMessages[documentId] = [...existing, message];
@@ -95,30 +177,55 @@ export function appendMessage(documentId, message) {
 
 // ---------- History events ----------
 
-export function getHistory() {
+export async function getHistory() {
+  if (shouldUseFirestore()) {
+    return readUserCollection("historyEvents");
+  }
+
   return readJSON(STORAGE_KEYS.history, []);
 }
 
-export function addHistoryEvent(event) {
-  const history = getHistory();
-  const next = [{ ...event, id: event.id ?? crypto.randomUUID() }, ...history];
-  writeJSON(STORAGE_KEYS.history, next.slice(0, 200)); // cap history size
+export async function addHistoryEvent(event) {
+  const historyEvent = {
+    ...event,
+    id: event.id ?? crypto.randomUUID(),
+    createdAt: event.createdAt ?? Date.now(),
+  };
+
+  if (shouldUseFirestore()) {
+    await setDoc(userDoc("historyEvents", historyEvent.id), historyEvent);
+    return historyEvent;
+  }
+
+  const history = await getHistory();
+  const next = [historyEvent, ...history];
+  writeJSON(STORAGE_KEYS.history, next.slice(0, 200));
   return next[0];
 }
 
 // ---------- Comparisons ----------
 
-export function getComparisons() {
+export async function getComparisons() {
+  if (shouldUseFirestore()) {
+    return readUserCollection("comparisons");
+  }
+
   return readJSON(STORAGE_KEYS.comparisons, []);
 }
 
-export function saveComparison(comparison) {
-  const comparisons = getComparisons();
+export async function saveComparison(comparison) {
+  if (shouldUseFirestore()) {
+    await setDoc(userDoc("comparisons", comparison.id), comparison);
+    return comparison;
+  }
+
+  const comparisons = await getComparisons();
   const next = [comparison, ...comparisons];
   writeJSON(STORAGE_KEYS.comparisons, next);
   return comparison;
 }
 
-export function getComparisonById(comparisonId) {
-  return getComparisons().find((c) => c.id === comparisonId) ?? null;
+export async function getComparisonById(comparisonId) {
+  const comparisons = await getComparisons();
+  return comparisons.find((comparison) => comparison.id === comparisonId) ?? null;
 }

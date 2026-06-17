@@ -62,9 +62,9 @@ export async function uploadDocument(file) {
     createdAt: Date.now(),
   };
 
-  saveDocument(document);
+  await saveDocument(document);
 
-  addHistoryEvent({
+  await addHistoryEvent({
     type: "upload",
     documentId: document.id,
     title: document.title,

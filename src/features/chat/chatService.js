@@ -34,7 +34,7 @@ export async function sendChatMessage({ document, question, chatHistory }) {
     text: question,
     createdAt: Date.now(),
   };
-  appendMessage(document.id, userMessage);
+  await appendMessage(document.id, userMessage);
 
   const documentText = truncateForLLM(document.fullText, 16000);
 
@@ -50,9 +50,9 @@ export async function sendChatMessage({ document, question, chatHistory }) {
     text: answerText,
     createdAt: Date.now(),
   };
-  appendMessage(document.id, botMessage);
+  await appendMessage(document.id, botMessage);
 
-  addHistoryEvent({
+  await addHistoryEvent({
     type: "chat",
     documentId: document.id,
     title: document.title,
@@ -80,9 +80,9 @@ export async function generateSummary(document) {
     maxTokens: 600,
   });
 
-  updateDocument(document.id, { summary });
+  await updateDocument(document.id, { summary });
 
-  addHistoryEvent({
+  await addHistoryEvent({
     type: "summary",
     documentId: document.id,
     title: document.title,

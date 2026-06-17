@@ -12,7 +12,7 @@ export async function fetchDocumentsForCompare() {
  * structured comparison table (topic / first paper / second paper rows).
  */
 export async function fetchComparison(firstDocumentId, secondDocumentId) {
-  const documents = getDocuments();
+  const documents = await getDocuments();
   const firstDoc = documents.find((doc) => doc.id === firstDocumentId);
   const secondDoc = documents.find((doc) => doc.id === secondDocumentId);
 
@@ -40,9 +40,9 @@ export async function fetchComparison(firstDocumentId, secondDocumentId) {
     date: new Date().toLocaleDateString("he-IL"),
   };
 
-  saveComparison(comparison);
+  await saveComparison(comparison);
 
-  addHistoryEvent({
+  await addHistoryEvent({
     type: "compare",
     documentId: firstDocumentId,
     title: `${firstDoc.title} מול ${secondDoc.title}`,
