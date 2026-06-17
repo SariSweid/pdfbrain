@@ -17,7 +17,7 @@ function ComparePage() {
   const hasEnoughDocuments = documents.length >= 2;
 
   return (
-    <main className="p-8 bg-slate-50 min-h-full overflow-y-auto">
+    <main className="p-8 bg-slate-50 h-full overflow-y-auto">
       <section className="max-w-5xl mx-auto space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">השוואת מאמרים</h1>
