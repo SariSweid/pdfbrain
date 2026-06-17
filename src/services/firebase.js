@@ -1,14 +1,12 @@
 import { initializeApp } from "firebase/app";
 import {
-  createUserWithEmailAndPassword,
   getAuth,
+  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// Add these values to a local .env file after copying them from Firebase Console.
-// Vite exposes only variables prefixed with VITE_ to client-side code.
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -19,9 +17,11 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
 
+export const auth = getAuth(app);
+export const db = getFirestore(app);
+
+// AUTH HELPERS
 export function loginUser(email, password) {
   return signInWithEmailAndPassword(auth, email, password);
 }
@@ -33,5 +33,3 @@ export function registerUser(email, password) {
 export function logoutUser() {
   return signOut(auth);
 }
-
-export { app, auth, db };
