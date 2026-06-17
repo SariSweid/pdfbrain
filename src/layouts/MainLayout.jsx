@@ -1,8 +1,8 @@
 import { useState } from "react";
 
-import ChatPage from "../pages/ChatPage";
-import ComparePage from "../pages/ComparePage";
-import HistoryPage from "../pages/HistoryPage";
+import ChatPage from "../features/chat/ChatPage";
+import ComparePage from "../features/compare/ComparePage";
+import HistoryPage from "../features/history/HistoryPage";
 
 function MainLayout({ onLogout }) {
   const [activeTab, setActiveTab] = useState("chat");

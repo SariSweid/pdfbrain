@@ -1,17 +1,32 @@
 import { useState } from "react";
 
-import LoginPage from "./pages/LoginPage";
+import LoginPage from "./features/auth/LoginPage";
+import RegisterPage from "./features/auth/RegisterPage";
 import MainLayout from "./layouts/MainLayout";
+import useAuth from "./features/auth/useAuth";
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { isLoggedIn, authLoading, authError, login, register, logout } = useAuth();
+  const [authView, setAuthView] = useState("login");
 
   return (
     <div className="bg-slate-50 min-h-screen font-sans" dir="rtl">
-      {!isLoggedIn ? (
-        <LoginPage onLogin={() => setIsLoggedIn(true)} />
+      {isLoggedIn ? (
+        <MainLayout onLogout={logout} />
+      ) : authView === "login" ? (
+        <LoginPage
+          onLogin={login}
+          authLoading={authLoading}
+          authError={authError}
+          onSwitchToRegister={() => setAuthView("register")}
+        />
       ) : (
-        <MainLayout onLogout={() => setIsLoggedIn(false)} />
+        <RegisterPage
+          onRegister={register}
+          authLoading={authLoading}
+          authError={authError}
+          onSwitchToLogin={() => setAuthView("login")}
+        />
       )}
     </div>
   );

@@ -10,7 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "docx": "^9.1.1",
     "firebase": "^12.14.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^2.5.2",
+    "pdfjs-dist": "^4.7.76",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
