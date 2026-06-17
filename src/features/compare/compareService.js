@@ -31,6 +31,7 @@ export async function fetchComparison(firstDocumentId, secondDocumentId) {
 
   const comparison = {
     id: crypto.randomUUID(),
+    type: "compare",
     firstDocumentId,
     secondDocumentId,
     firstPaperTitle: firstDoc.title,
@@ -45,7 +46,11 @@ export async function fetchComparison(firstDocumentId, secondDocumentId) {
   await addHistoryEvent({
     type: "compare",
     documentId: firstDocumentId,
-    title: `${firstDoc.title} מול ${secondDoc.title}`,
+    title: "השוואת מאמרים",
+    subtitle: {
+      first: firstDoc.title,
+      second: secondDoc.title,
+    },
     label: "השוואת מאמרים",
     date: comparison.date,
   });

@@ -4,7 +4,7 @@ const TYPE_ICONS = {
   upload: "📤",
   chat: "💬",
   summary: "📝",
-  compare: "🔍",
+  compare: "⚖️",
 };
 
 function HistoryPage() {
@@ -21,7 +21,9 @@ function HistoryPage() {
           </p>
         </div>
 
-        {loading && <p className="text-sm text-gray-500">טוען היסטוריה...</p>}
+        {loading && (
+          <p className="text-sm text-gray-500">טוען היסטוריה...</p>
+        )}
 
         {!loading && historyItems.length === 0 && (
           <p className="text-sm text-gray-400">
@@ -33,18 +35,41 @@ function HistoryPage() {
           {historyItems.map((item) => (
             <article
               key={item.id}
-              className="bg-white border border-gray-200 rounded-lg p-5 shadow-sm flex items-center justify-between gap-4"
+              className="group bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition flex items-start justify-between gap-4"
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <span className="text-xl">{TYPE_ICONS[item.type] ?? "📌"}</span>
+              <div className="flex items-start gap-3 min-w-0">
+                <span className="text-xl">
+                  {TYPE_ICONS[item.type] ?? "📌"}
+                </span>
 
                 <div className="min-w-0">
-                  <h2 className="text-lg font-bold text-gray-900 truncate">{item.title}</h2>
-                  <p className="mt-1 text-sm text-gray-500">{item.date}</p>
+                  <h2 className="text-sm font-semibold text-gray-900 truncate leading-snug">
+                    {item.title}
+                  </h2>
+
+                  {/* ✅ IMPROVED COMPARE UI */}
+                  {item.type === "compare" && item.subtitle && (
+                    <div className="mt-1 flex items-center gap-2 text-sm text-gray-600 bg-gray-50 px-2 py-1 rounded-md w-fit">
+                      <span className="truncate max-w-[250px]">
+                        {item.subtitle.first}
+                      </span>
+
+                      <span className="text-indigo-500">⚖️</span>
+
+                      <span className="truncate max-w-[250px]">
+                        {item.subtitle.second}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="mt-1 text-xs text-gray-500 flex items-center gap-2">
+                    <span>📅</span>
+                    <span>{item.date}</span>
+                  </div>
                 </div>
               </div>
 
-              <span className="shrink-0 text-sm font-semibold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full">
+              <span className="shrink-0 text-xs font-medium text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
                 {item.label}
               </span>
             </article>
