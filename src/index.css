@@ -1,1 +1,98 @@
 @import "tailwindcss";
+
+/* ── Design tokens ────────────────────────────────────────────── */
+:root {
+  /* Brand */
+  --brand:         #6366f1;   /* indigo-500 */
+  --brand-hover:   #4f46e5;   /* indigo-600 */
+  --brand-light:   #eef2ff;   /* indigo-50  */
+
+  /* Surfaces */
+  --bg-page:       #f8f7ff;
+  --bg-card:       #ffffff;
+  --bg-sidebar:    #ffffff;
+  --bg-input:      #ffffff;
+
+  /* Text */
+  --text-primary:  #1e1b4b;   /* deep indigo */
+  --text-secondary:#6b7280;
+  --text-muted:    #9ca3af;
+
+  /* Borders */
+  --border:        #e5e7eb;
+  --border-focus:  #6366f1;
+
+  /* Bot / user message bubbles */
+  --msg-bot-bg:    #f0f0ff;
+  --msg-bot-text:  #1e1b4b;
+  --msg-user-bg:   #6366f1;
+  --msg-user-text: #ffffff;
+
+  /* Misc */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.10);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  --transition: 0.2s ease;
+}
+
+/* ── Dark mode ────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --brand:         #818cf8;   /* indigo-400 — brighter for dark bg */
+  --brand-hover:   #6366f1;
+  --brand-light:   #1e1b4b;
+
+  --bg-page:       #0f0e1a;
+  --bg-card:       #1a1830;
+  --bg-sidebar:    #13122b;
+  --bg-input:      #1a1830;
+
+  --text-primary:  #e9e8ff;
+  --text-secondary:#9d9bbf;
+  --text-muted:    #6b6885;
+
+  --border:        #2e2b52;
+  --border-focus:  #818cf8;
+
+  --msg-bot-bg:    #1e1b4b;
+  --msg-bot-text:  #e9e8ff;
+  --msg-user-bg:   #6366f1;
+  --msg-user-text: #ffffff;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* ── Base ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  transition: background-color var(--transition), color var(--transition);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Smooth theme transitions for all elements */
+*, *::before, *::after {
+  transition:
+    background-color var(--transition),
+    border-color var(--transition),
+    color var(--transition),
+    box-shadow var(--transition);
+}
+
+/* ── Scrollbar (subtle in both modes) ────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }

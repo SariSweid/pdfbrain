@@ -1,23 +1,20 @@
-import { initialDocuments, initialMessages } from "../data/mockData";
+// Mock data removed — using real backend now
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function fetchInitialDocuments() {
-  await delay(400);
-  return initialDocuments;
+  return [];
 }
 
 export async function fetchInitialMessages() {
-  await delay(400);
-  return initialMessages;
+  return [];
 }
 
 export async function sendChatMessage(message) {
   await delay(800);
-
   return {
     id: Date.now(),
     sender: "bot",
-    text: `I reviewed your question about "${message}". PDFBrain is checking the uploaded academic papers and preparing a short answer with relevant context.`,
+    text: `קיבלתי: "${message}". שירות ה-API האמיתי יחבר כאן.`,
   };
 }

@@ -1,165 +1,176 @@
 import { useEffect, useState } from "react";
+import {
+  fetchInitialDocuments,
+  uploadDocument,
+  fetchMessagesForDocument,
+  sendChatMessage,
+} from "./chatService";
+import { deleteDocument, addHistoryEvent, updateDocument, archiveAndClearMessages } from "../../lib/localStore";
 
-import { fetchInitialDocuments, uploadDocument } from "./documentService";
-import { fetchMessagesForDocument, sendChatMessage, generateSummary } from "./chatService";
-import { deleteDocument } from "../../lib/localStore";
-
-function useChat() {
-  const [documents, setDocuments] = useState([]);
+export function useChat() {
+  const [documents, setDocuments]               = useState([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [inputValue, setInputValue] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [uploadError, setUploadError] = useState("");
-  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [messages, setMessages]                 = useState([]);
+  const [inputValue, setInputValue]             = useState("");
+  const [loading, setLoading]                   = useState(false);
+  const [uploadError, setUploadError]           = useState("");
 
   const selectedDocument =
     documents.find((doc) => doc.id === selectedDocumentId) ?? null;
 
-  // Load documents once on mount.
+  // ── Load documents on mount ───────────────────────────────────────────────
   useEffect(() => {
-    async function loadDocuments() {
-      const loadedDocuments = await fetchInitialDocuments();
-      setDocuments(loadedDocuments);
-
-      if (loadedDocuments.length > 0) {
-        setSelectedDocumentId(loadedDocuments[0].id);
+    async function load() {
+      try {
+        const docs = await fetchInitialDocuments();
+        setDocuments(docs);
+        if (docs.length > 0) setSelectedDocumentId(docs[0].id);
+      } catch (err) {
+        console.error("Failed to load documents:", err);
       }
     }
-
-    loadDocuments();
+    load();
   }, []);
 
-  // Load messages whenever the selected document changes.
+  // ── Load messages when selected document changes ──────────────────────────
   useEffect(() => {
     async function loadMessages() {
-      if (!selectedDocumentId) {
+      if (!selectedDocumentId) { setMessages([]); return; }
+      try {
+        const msgs = await fetchMessagesForDocument(selectedDocumentId);
+        setMessages(msgs);
+      } catch (err) {
+        console.error("Failed to load messages:", err);
         setMessages([]);
-        return;
       }
-
-      const loadedMessages = await fetchMessagesForDocument(selectedDocumentId);
-      setMessages(loadedMessages);
     }
-
     loadMessages();
   }, [selectedDocumentId]);
 
-  // Automatically generate a summary for a selected document if it doesn't
-  // already have one cached.
-  useEffect(() => {
-    let mounted = true;
-    async function ensureSummary() {
-      if (!selectedDocument) return;
-      if (selectedDocument.summary) return;
+  // ── Send message ──────────────────────────────────────────────────────────
+  // overrideText lets ChatPage inject an automated opening prompt
+  const handleSendMessage = async (e, systemPrompt, overrideText) => {
+    e?.preventDefault();
 
-      setSummaryLoading(true);
-      try {
-        const summary = await generateSummary(selectedDocument);
-        if (!mounted) return;
+    const text = overrideText ?? inputValue.trim();
+    if (!text || loading) return;
 
-        setDocuments((prevDocuments) =>
-          prevDocuments.map((doc) => (doc.id === selectedDocument.id ? { ...doc, summary } : doc))
-        );
-      } catch (err) {
-        console.error("לא הצלחנו להפיק תקציר אוטומטי:", err);
-      } finally {
-        if (mounted) setSummaryLoading(false);
-      }
+    // Only add a user bubble when the user actually typed (not auto-trigger)
+    if (!overrideText) {
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), sender: "user", text, createdAt: Date.now() },
+      ]);
+      setInputValue("");
     }
 
-    ensureSummary();
-
-    return () => {
-      mounted = false;
-    };
-  }, [selectedDocument?.id]);
-
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-
-    const trimmedMessage = inputValue.trim();
-    if (!trimmedMessage || loading || !selectedDocument) return;
-
-    const optimisticUserMessage = {
-      id: crypto.randomUUID(),
-      sender: "user",
-      text: trimmedMessage,
-    };
-
-    setMessages((prevMessages) => [...prevMessages, optimisticUserMessage]);
-    setInputValue("");
     setLoading(true);
 
     try {
+      const doc = selectedDocument;
+      if (!doc) return;
+
       const botMessage = await sendChatMessage({
-        document: selectedDocument,
-        question: trimmedMessage,
-        chatHistory: messages,
+        document:    doc,
+        question:    text,
+        chatHistory: overrideText ? [] : messages,
+        systemPrompt,
       });
-      setMessages((prevMessages) => [...prevMessages, botMessage]);
+      setMessages((prev) => [...prev, botMessage]);
     } catch (error) {
-      setMessages((prevMessages) => [
-        ...prevMessages,
-        {
-          id: crypto.randomUUID(),
-          sender: "bot",
-          text: `אירעה שגיאה: ${error.message}`,
-        },
+      setMessages((prev) => [
+        ...prev,
+        { id: crypto.randomUUID(), sender: "bot", text: `אירעה שגיאה: ${error.message}`, createdAt: Date.now() },
       ]);
     } finally {
       setLoading(false);
     }
   };
 
+  // ── Upload ────────────────────────────────────────────────────────────────
   const handleUploadDocument = async (file) => {
     setUploadError("");
-
     try {
-      const newDocument = await uploadDocument(file);
-      setDocuments((prevDocuments) => [newDocument, ...prevDocuments]);
-      setSelectedDocumentId(newDocument.id);
-      return newDocument;
+      const newDoc = await uploadDocument(file);
+      setDocuments((prev) => [newDoc, ...prev]);
+      setSelectedDocumentId(newDoc.id);
+      setMessages([]);
+
+      return newDoc;
     } catch (error) {
       setUploadError(error.message);
       throw error;
     }
   };
 
+  // ── Select ────────────────────────────────────────────────────────────────
   const handleSelectDocument = (documentId) => {
     setSelectedDocumentId(documentId);
   };
 
-  const handleDeleteDocument = async (documentId) => {
-    await deleteDocument(documentId);
-
-    setDocuments((prevDocuments) => {
-      const next = prevDocuments.filter((doc) => doc.id !== documentId);
-
-      if (selectedDocumentId === documentId) {
-        setSelectedDocumentId(next.length > 0 ? next[0].id : null);
-      }
-
-      return next;
-    });
+  // ── Delete ────────────────────────────────────────────────────────────────
+  const handleDeleteDocument = (documentId) => {
+    deleteDocument(documentId).catch(() => {});
+    setDocuments((prev) => prev.filter((d) => d.id !== documentId));
+    if (selectedDocumentId === documentId) {
+      const remaining = documents.filter((d) => d.id !== documentId);
+      setSelectedDocumentId(remaining[0]?.id ?? null);
+    }
   };
 
-  // summaryGeneration handled automatically via effect above
+  // ── Export chat as text ───────────────────────────────────────────────────
+  const handleExport = () => {
+    if (!selectedDocument || messages.length === 0) return;
+    const text = messages
+      .map((m) => `${m.sender === "user" ? "משתמש" : "בוט"}: ${m.text}`)
+      .join("\n\n");
+    const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `${selectedDocument.title}_chat.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── Clear all messages for the current document (redo) ─────────────────────
+  const handleRestartSession = async () => {
+    if (!selectedDocumentId) return;
+    try {
+      await archiveAndClearMessages(selectedDocumentId); // preserves history for lecturer
+    } catch (err) {
+      console.error("clearMessages failed:", err);
+    }
+    setMessages([]);
+  };
+
+  // ── Update a document's fields (e.g. save analysis) ────────────────────────
+  const handleUpdateDocument = async (documentId, patch) => {
+    try {
+      await updateDocument(documentId, patch);
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === documentId ? { ...d, ...patch } : d))
+      );
+    } catch (err) {
+      console.error("Failed to update document:", err);
+    }
+  };
 
   return {
     documents,
-    selectedDocument,
     selectedDocumentId,
-    handleSelectDocument,
-    handleDeleteDocument,
+    selectedDocument,
     messages,
     inputValue,
     setInputValue,
-    handleSendMessage,
-    handleUploadDocument,
     loading,
     uploadError,
+    handleSendMessage,
+    handleUploadDocument,
+    handleSelectDocument,
+    handleDeleteDocument,
+    handleExport,
+    handleUpdateDocument,
+    handleRestartSession,
   };
 }
-
-export default useChat;
