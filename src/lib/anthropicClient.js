@@ -6,7 +6,6 @@
 // public, replace callClaude() with a fetch() to your own backend
 // (e.g. a Firebase Cloud Function) that holds the key server-side.
 
-const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6";
 
 export const isAnthropicConfigured = Boolean(
@@ -28,15 +27,9 @@ export async function callClaude({ system, prompt, maxTokens = 1500 }) {
     );
   }
 
-  const response = await fetch(ANTHROPIC_API_URL, {
+  const response = await fetch("/api/claude", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-      // Required so Anthropic allows the request directly from a browser.
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: MODEL,
       max_tokens: maxTokens,
@@ -45,26 +38,26 @@ export async function callClaude({ system, prompt, maxTokens = 1500 }) {
     }),
   });
 
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(
-      `Anthropic API error (${response.status}): ${errorBody.slice(0, 300)}`
-    );
-  }
+if (!response.ok) {
+  const errorBody = await response.text();
+  throw new Error(
+    `Anthropic API error (${response.status}): ${errorBody.slice(0, 300)}`
+  );
+}
 
-  const data = await response.json();
+const data = await response.json();
 
-  const text = data.content
-    ?.filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("\n")
-    .trim();
+const text = data.content
+  ?.filter((block) => block.type === "text")
+  .map((block) => block.text)
+  .join("\n")
+  .trim();
 
-  if (!text) {
-    throw new Error("התקבלה תשובה ריקה מהמודל.");
-  }
+if (!text) {
+  throw new Error("התקבלה תשובה ריקה מהמודל.");
+}
 
-  return text;
+return text;
 }
 
 /**

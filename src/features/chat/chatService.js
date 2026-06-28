@@ -82,9 +82,9 @@ ${document.extractedText || document.title}`;
   }));
   claudeMessages.push({ role: "user", content: question });
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
+  const response = await fetch("/api/claude", {
     method: "POST",
-    headers: ANTHROPIC_HEADERS,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
       max_tokens: 1000,
