@@ -1,19 +1,21 @@
-function Sidebar({ documents, selectedDocumentId, onSelectDocument, onUpload, uploadError, uploading }) {
+function Sidebar({ documents, selectedDocumentId, onSelectDocument, onUpload, uploadError, uploading, compact = false, mobile = false }) {
   return (
     <aside
       style={{
-        width: "260px",
+        width: compact ? "100%" : "260px",
+        height: compact ? "auto" : "100%",
+        maxHeight: compact ? (mobile ? "178px" : "210px") : "none",
         flexShrink: 0,
         background: "var(--bg-sidebar)",
-        borderLeft: "1px solid var(--border)",
+        borderLeft: compact ? "none" : "1px solid var(--border)",
+        borderBottom: compact ? "1px solid var(--border)" : "none",
         display: "flex",
-        flexDirection: "column",
-        height: "100%",
+        flexDirection: compact ? "row" : "column",
         overflow: "hidden",
       }}
     >
       {/* Upload button */}
-      <div style={{ padding: "16px", borderBottom: "1px solid var(--border)" }}>
+      <div style={{ padding: compact ? "10px" : "16px", borderBottom: compact ? "none" : "1px solid var(--border)", borderLeft: compact ? "1px solid var(--border)" : "none", width: compact ? (mobile ? "142px" : "180px") : "auto", flexShrink:0 }}>
         <label
           style={{
             display: "flex",
@@ -26,7 +28,7 @@ function Sidebar({ documents, selectedDocumentId, onSelectDocument, onUpload, up
             color: "#fff",
             borderRadius: "var(--radius-sm)",
             fontWeight: 600,
-            fontSize: "14px",
+            fontSize: mobile ? "12px" : "14px",
             textAlign: "center",
             cursor: uploading ? "not-allowed" : "pointer",
             boxShadow: "var(--shadow-sm)",
@@ -81,14 +83,15 @@ function Sidebar({ documents, selectedDocumentId, onSelectDocument, onUpload, up
       </div>
 
       {/* Document list */}
-      <div style={{ flex: 1, overflowY: "auto" }}>
+      <div style={{ flex: 1, overflowY: compact ? "hidden" : "auto", overflowX: compact ? "auto" : "hidden", display: compact ? "flex" : "block", minWidth:0 }}>
         {documents.length === 0 ? (
           <p
             style={{
-              padding: "24px 16px",
+              padding: compact ? "18px 14px" : "24px 16px",
               color: "var(--text-muted)",
               fontSize: "13px",
               textAlign: "center",
+              minWidth: compact ? "180px" : "auto",
             }}
           >
             אין מסמכים עדיין.
@@ -103,20 +106,24 @@ function Sidebar({ documents, selectedDocumentId, onSelectDocument, onUpload, up
                 key={doc.id}
                 onClick={() => !uploading && onSelectDocument?.(doc.id)}
                 style={{
-                  padding: "12px 16px",
-                  borderBottom: "1px solid var(--border)",
+                  padding: compact ? "10px 12px" : "12px 16px",
+                  borderBottom: compact ? "none" : "1px solid var(--border)",
+                  borderLeft: compact ? "1px solid var(--border)" : "none",
                   cursor: uploading ? "default" : "pointer",
                   display: "flex",
                   alignItems: "center",
                   gap: "10px",
                   background: isSelected ? "var(--brand-light)" : "transparent",
-                  borderRight: isSelected ? "3px solid var(--brand)" : "3px solid transparent",
+                  borderRight: compact ? "none" : isSelected ? "3px solid var(--brand)" : "3px solid transparent",
+                  borderTop: compact ? isSelected ? "3px solid var(--brand)" : "3px solid transparent" : "none",
                   opacity: uploading ? 0.5 : 1,
                   transition: "opacity 0.2s",
+                  minWidth: compact ? (mobile ? "180px" : "220px") : "auto",
+                  maxWidth: compact ? (mobile ? "180px" : "260px") : "none",
                 }}
               >
                 <span style={{ fontSize: "20px" }}>📄</span>
-                <div style={{ overflow: "hidden" }}>
+                <div style={{ overflow: "hidden", minWidth:0 }}>
                   <p
                     style={{
                       margin: 0,

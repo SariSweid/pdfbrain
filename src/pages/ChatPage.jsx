@@ -5,6 +5,7 @@ import Sidebar from "../components/Sidebar";
 import { useChat } from "../features/chat/useChat";
 import { exportSummaryToWord, exportSummaryToPdf } from "../lib/exportUtils";
 import { addHistoryEvent } from "../lib/localStore";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 
 // ── System prompts ─────────────────────────────────────────────────────────
 function buildSystemPrompt(documentText, mode) {
@@ -58,35 +59,39 @@ function MarkdownContent({ text }) {
 
 // ── Analysis card — always visible when doc has analysis ──────────────────
 // chatStarted: true = chat is active, hide the "start" CTA
-function AnalysisCard({ analysis, docTitle, onStartLearning, chatStarted }) {
+function AnalysisCard({ analysis, docTitle, onStartLearning, chatStarted, expanded, onToggle }) {
   const [exportingWord, setExportingWord] = useState(false);
   const [exportingPdf,  setExportingPdf]  = useState(false);
-  const [collapsed,     setCollapsed]     = useState(false);
   const exportDoc = { title: docTitle, summary: analysis };
+  const collapsed = !expanded;
 
   return (
-    <div style={{ background:"var(--bg-card)", border:"1px solid var(--border)", borderRadius:"var(--radius-md)", overflow:"hidden", flexShrink:0 }}>
+    <div style={{ background:"var(--bg-card)", border:"1px solid var(--border)", borderRadius:"var(--radius-md)", overflow:"hidden", flexShrink:0, width:"100%", height: expanded ? "100%" : "auto", display:"flex", flexDirection:"column", minHeight:0 }}>
       {/* Header row — always visible */}
-      <div style={{ display:"flex", alignItems:"center", padding:"10px 16px", borderBottom: collapsed ? "none" : "1px solid var(--border)", gap:"8px" }}>
+      <div style={{ display:"flex", alignItems:"center", padding:"10px 16px", borderBottom: collapsed ? "none" : "1px solid var(--border)", gap:"8px", minHeight:"44px" }}>
         <span style={{ fontWeight:700, fontSize:"14px", color:"var(--text-primary)", flex:1 }}>📊 ניתוח המאמר</span>
 
         {/* Export buttons */}
-        <button onClick={async () => { setExportingWord(true); try { await exportSummaryToWord(exportDoc); } catch (e) { alert(e.message); } setExportingWord(false); }}
-          style={xBtn}>{exportingWord ? "..." : "📄 Word"}</button>
-        <button onClick={async () => { setExportingPdf(true);  try { await exportSummaryToPdf(exportDoc);  } catch (e) { alert(e.message); } setExportingPdf(false); }}
-          style={xBtn}>{exportingPdf ? "..." : "📄 PDF"}</button>
+        {!collapsed && (
+          <>
+            <button onClick={async () => { setExportingWord(true); try { await exportSummaryToWord(exportDoc); } catch (e) { alert(e.message); } setExportingWord(false); }}
+              style={xBtn}>{exportingWord ? "..." : "📄 Word"}</button>
+            <button onClick={async () => { setExportingPdf(true);  try { await exportSummaryToPdf(exportDoc);  } catch (e) { alert(e.message); } setExportingPdf(false); }}
+              style={xBtn}>{exportingPdf ? "..." : "📄 PDF"}</button>
+          </>
+        )}
 
         {/* Collapse toggle */}
-        <button onClick={() => setCollapsed(c => !c)} style={{ ...xBtn, fontSize:"11px", padding:"3px 8px" }}>
+        <button onClick={onToggle} style={{ ...xBtn, fontSize:"11px", padding:"3px 8px" }}>
           {collapsed ? "▼ הצג" : "▲ כווץ"}
         </button>
       </div>
 
       {/* Body */}
       {!collapsed && (
-        <div style={{ padding:"14px 18px" }}>
+        <div style={{ padding:"14px 18px", display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
           {/* Analysis text — shorter when chat is active */}
-          <div style={{ maxHeight: chatStarted ? "160px" : "300px", overflowY:"auto", direction:"rtl", textAlign:"right" }}>
+          <div style={{ flex:1, overflowY:"auto", direction:"rtl", textAlign:"right", minHeight:0 }}>
             <MarkdownContent text={analysis} />
           </div>
 
@@ -172,7 +177,9 @@ function ChatPage() {
   const [uploading,   setUploading]   = useState(false);
   const [uploadFailed, setUploadFailed] = useState(null);
   const [confirmRedo,  setConfirmRedo]  = useState(false);
+  const [analysisExpanded, setAnalysisExpanded] = useState(false);
   const messagesEndRef = useRef(null);
+  const { isMobile, isCompact } = useResponsiveLayout();
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -347,6 +354,9 @@ Exact shape required:
         title:      `ציון ${parsed.score}/100 — ${selectedDocument.title}`,
         label:      `ציון ${parsed.score}`,
         score:      parsed.score,
+        feedback:   parsed.feedback ?? "",
+        breakdown:  Array.isArray(parsed.breakdown) ? parsed.breakdown : [],
+        documentTitle: selectedDocument.title,
         date:       new Date().toLocaleDateString("he-IL"),
       }).catch(() => {});
 
@@ -365,24 +375,26 @@ Exact shape required:
   const isInputDisabled  = loading || uploading || !selectedDocument || awaitingStart;
 
   return (
-    <div style={{ display:"flex", height:"100%", overflow:"hidden" }}>
+    <div style={{ display:"flex", flexDirection:isCompact ? "column" : "row", width:"100%", minWidth:0, height:"100%", minHeight:0, overflow:"hidden" }}>
       <Sidebar
         documents={documents}
         selectedDocumentId={selectedDocumentId}
-        onSelectDocument={(id) => { handleSelectDocument(id); setGrade(null); setUploadFailed(null); setConfirmRedo(false); }}
+        onSelectDocument={(id) => { handleSelectDocument(id); setGrade(null); setUploadFailed(null); setConfirmRedo(false); setAnalysisExpanded(false); }}
         onUpload={handleUpload}
         uploadError={uploadError}
         uploading={uploading}
+        compact={isCompact}
+        mobile={isMobile}
       />
 
-      <div style={{ flex:1, display:"flex", flexDirection:"column", background:"var(--bg-page)", overflow:"hidden" }}>
+      <div style={{ flex:"1 1 auto", minWidth:0, minHeight:0, display:"flex", flexDirection:"column", background:"var(--bg-page)", overflow:"hidden" }}>
 
         {/* ── Top bar ── */}
-        <div style={{ padding:"10px 20px", background:"var(--bg-card)", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", gap:"10px", flexShrink:0 }}>
+        <div style={{ padding:isMobile ? "10px 12px" : "10px 20px", background:"var(--bg-card)", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", gap:"10px", flexShrink:0, minWidth:0, flexWrap:isMobile ? "wrap" : "nowrap" }}>
           {selectedDocument ? (
             <>
               <span style={{ fontSize:"18px" }}>📄</span>
-              <span style={{ fontWeight:600, color:"var(--text-primary)", fontSize:"15px", flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{selectedDocument.title}</span>
+              <span style={{ fontWeight:600, color:"var(--text-primary)", fontSize:"15px", flex:"1 1 auto", minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{selectedDocument.title}</span>
 
               {/* Redo + Score — visible once chat has started */}
               {chatStarted && !confirmRedo && (
@@ -431,22 +443,24 @@ Exact shape required:
         </div>
 
         {/* ── Content area: analysis pinned above messages ── */}
-        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", minHeight:0 }}>
+        <div style={{ flex:"1 1 auto", display:"flex", flexDirection:"column", overflow:"hidden", minHeight:0, minWidth:0 }}>
 
           {/* Analysis card — pinned at top, always visible when doc has analysis */}
           {!uploading && !uploadFailed && hasAnalysis && (
-            <div style={{ padding:"12px 16px 0", flexShrink:0 }}>
+            <div style={{ padding:isMobile ? "10px 10px 0" : "12px 16px 0", flex: analysisExpanded ? "1 1 auto" : "0 0 auto", minHeight:0, minWidth:0 }}>
               <AnalysisCard
                 analysis={selectedDocument.analysis}
                 docTitle={selectedDocument.title}
                 onStartLearning={handleStartLearning}
                 chatStarted={chatStarted}
+                expanded={analysisExpanded}
+                onToggle={() => setAnalysisExpanded((value) => !value)}
               />
             </div>
           )}
 
           {/* Scrollable messages area */}
-          <div style={{ flex:1, overflowY:"auto", padding:"14px 16px", display:"flex", flexDirection:"column", gap:"14px", minHeight:0 }}>
+          <div style={{ flex:1, overflowY:"auto", padding:isMobile ? "12px 10px" : "14px 16px", display: analysisExpanded && hasAnalysis ? "none" : "flex", flexDirection:"column", gap:"14px", minHeight:0 }}>
 
             {/* Upload spinner */}
             {uploading && (
@@ -497,14 +511,14 @@ Exact shape required:
         </div>
 
         {/* ── Input bar ── */}
-        <div style={{ flexShrink:0, padding:"14px 16px", background:"var(--bg-card)", borderTop:"1px solid var(--border)", boxShadow:"0 -2px 8px rgba(0,0,0,0.05)" }}>
+        <div style={{ flexShrink:0, padding:isMobile ? "10px" : "14px 16px", background:"var(--bg-card)", borderTop:"1px solid var(--border)", boxShadow:"0 -2px 8px rgba(0,0,0,0.05)" }}>
           <form
             onSubmit={(e) => {
               e.preventDefault();
               if (!inputValue.trim() || isInputDisabled) return;
               handleSendMessage(e, buildSystemPrompt(selectedDocument.extractedText || selectedDocument.title, "educator"));
             }}
-            style={{ display:"flex", gap:"10px", alignItems:"center" }}
+            style={{ display:"flex", flexDirection:isMobile ? "column" : "row", gap:"10px", alignItems:"stretch" }}
           >
             <input
               type="text" value={inputValue} onChange={(e) => setInputValue(e.target.value)} disabled={isInputDisabled}
@@ -515,12 +529,12 @@ Exact shape required:
                 !chatStarted ? "שאל שאלה כדי שהמורה יתחיל..." : "ענה על שאלת המורה..."
               }
               dir="rtl"
-              style={{ flex:1, border:"1px solid var(--border)", borderRadius:"var(--radius-md)", padding:"13px 16px", fontSize:"14px", background:isInputDisabled?"var(--bg-page)":"var(--bg-input)", color:"var(--text-primary)", outline:"none", direction:"rtl", opacity:isInputDisabled?.6:1, fontFamily:"inherit" }}
+              style={{ flex:1, width:"100%", border:"1px solid var(--border)", borderRadius:"var(--radius-md)", padding:"13px 16px", fontSize:"14px", background:isInputDisabled?"var(--bg-page)":"var(--bg-input)", color:"var(--text-primary)", outline:"none", direction:"rtl", opacity:isInputDisabled?.6:1, fontFamily:"inherit" }}
               onFocus={(e) => { if (!isInputDisabled) { e.target.style.borderColor="var(--border-focus)"; e.target.style.boxShadow="0 0 0 3px rgba(99,102,241,.12)"; } }}
               onBlur={(e) => { e.target.style.borderColor="var(--border)"; e.target.style.boxShadow="none"; }}
             />
             <button type="submit" disabled={isInputDisabled || !inputValue.trim()}
-              style={{ background:isInputDisabled||!inputValue.trim()?"var(--text-muted)":"var(--brand)", color:"#fff", border:"none", borderRadius:"var(--radius-md)", padding:"13px 22px", fontWeight:600, fontSize:"14px", cursor:isInputDisabled||!inputValue.trim()?"not-allowed":"pointer", whiteSpace:"nowrap", flexShrink:0, fontFamily:"inherit" }}>
+              style={{ background:isInputDisabled||!inputValue.trim()?"var(--text-muted)":"var(--brand)", color:"#fff", border:"none", borderRadius:"var(--radius-md)", padding:"13px 22px", fontWeight:600, fontSize:"14px", cursor:isInputDisabled||!inputValue.trim()?"not-allowed":"pointer", whiteSpace:"nowrap", flexShrink:0, fontFamily:"inherit", width:isMobile ? "100%" : "auto" }}>
               {loading ? "..." : "שלח 🚀"}
             </button>
           </form>

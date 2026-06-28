@@ -3,6 +3,7 @@ import { useState } from "react";
 function RegisterPage({ onRegister, authLoading, authError, onSwitchToLogin }) {
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
+  const [role,     setRole]     = useState("student");
 
   const inputStyle = {
     width:"100%", padding:"12px 14px", boxSizing:"border-box",
@@ -24,7 +25,7 @@ function RegisterPage({ onRegister, authLoading, authError, onSwitchToLogin }) {
           <p style={{ color:"rgba(255,255,255,.55)", fontSize:"13px", margin:"6px 0 0" }}>יצירת חשבון חדש</p>
         </div>
 
-        <form onSubmit={(e) => { e.preventDefault(); onRegister(email, password); }}
+        <form onSubmit={(e) => { e.preventDefault(); onRegister(email, password, role); }}
           style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
           <div>
             <label style={{ color:"rgba(255,255,255,.7)", fontSize:"13px", display:"block", marginBottom:"6px" }}>אימייל</label>
@@ -39,6 +40,46 @@ function RegisterPage({ onRegister, authLoading, authError, onSwitchToLogin }) {
             <input type="password" value={password} onChange={e=>setPassword(e.target.value)}
               placeholder="••••••••" minLength={6} required style={inputStyle}
               onFocus={onFocus} onBlur={onBlur} />
+          </div>
+
+          <div>
+            <label style={{ color:"rgba(255,255,255,.7)", fontSize:"13px", display:"block", marginBottom:"8px" }}>
+              בחר תפקיד
+            </label>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:"10px" }}>
+              {[
+                { id:"student", emoji:"👨‍🎓", label:"סטודנט" },
+                { id:"lecturer", emoji:"👨‍🏫", label:"מרצה" },
+              ].map((option) => {
+                const selected = role === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setRole(option.id)}
+                    aria-pressed={selected}
+                    style={{
+                      display:"flex",
+                      alignItems:"center",
+                      justifyContent:"center",
+                      gap:"8px",
+                      padding:"12px 10px",
+                      borderRadius:"12px",
+                      border:selected ? "1.5px solid #a5b4fc" : "1px solid rgba(255,255,255,.2)",
+                      background:selected ? "rgba(99,102,241,.32)" : "rgba(255,255,255,.08)",
+                      color:"#fff",
+                      cursor:"pointer",
+                      fontWeight:selected ? 800 : 600,
+                      fontSize:"14px",
+                      fontFamily:"inherit",
+                    }}
+                  >
+                    <span style={{ fontSize:"18px", lineHeight:1 }}>{option.emoji}</span>
+                    <span>{option.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {authError && <p style={{ color:"#f87171", fontSize:"13px", margin:0 }}>{authError}</p>}

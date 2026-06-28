@@ -252,6 +252,15 @@ function App() {
   }
 
   // ── Firebase flow ──────────────────────────────────────────────────────────
+  const handleRegister = async (email, password, role) => {
+    const registered = await register(email, password);
+    if (!registered) return false;
+
+    await saveUserRole(role);
+    setUserProfile({ role });
+    return true;
+  };
+
   if (authLoading || profileLoading) return <AppLoader />;
 
   if (!isLoggedIn) {
@@ -262,7 +271,7 @@ function App() {
       />
     ) : (
       <RegisterPage
-        onRegister={register} authLoading={authLoading} authError={authError}
+        onRegister={handleRegister} authLoading={authLoading} authError={authError}
         onSwitchToLogin={() => setAuthView("login")}
       />
     );

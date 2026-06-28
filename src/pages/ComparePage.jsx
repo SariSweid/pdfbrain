@@ -1,6 +1,7 @@
 import { useState } from "react";
 import useCompare from "../features/compare/useCompare";
 import { exportComparisonToWord, exportComparisonToPdf } from "../lib/exportUtils";
+import { useResponsiveLayout } from "../hooks/useResponsiveLayout";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ComparePage — lets the user pick two uploaded PDFs and compare them via AI
@@ -20,6 +21,7 @@ function ComparePage() {
 
   const [exportingWord, setExportingWord] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const { isMobile, isCompact } = useResponsiveLayout();
 
   const hasEnoughDocs = documents.length >= 2;
   const bothSelected =
@@ -33,7 +35,7 @@ function ComparePage() {
         height: "100%",
         overflowY: "auto",
         background: "var(--bg-page)",
-        padding: "32px 28px",
+        padding: isMobile ? "18px 12px" : isCompact ? "24px 18px" : "32px 28px",
         boxSizing: "border-box",
         direction: "rtl",
       }}
@@ -44,7 +46,7 @@ function ComparePage() {
           margin: "0 auto",
           display: "flex",
           flexDirection: "column",
-          gap: "24px",
+          gap: isMobile ? "18px" : "24px",
         }}
       >
         {/* ── Header ── */}
@@ -52,7 +54,7 @@ function ComparePage() {
           <h1
             style={{
               margin: "0 0 6px",
-              fontSize: "22px",
+              fontSize: isMobile ? "20px" : "22px",
               fontWeight: 700,
               color: "var(--text-primary)",
             }}
@@ -93,7 +95,7 @@ function ComparePage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            gridTemplateColumns: isCompact ? "1fr" : "1fr 1fr",
             gap: "16px",
           }}
         >
@@ -252,7 +254,9 @@ function ComparePage() {
               style={{
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "space-between",
+                justifyContent: isMobile ? "flex-start" : "space-between",
+                flexDirection: isMobile ? "column" : "row",
+                gap: "10px",
               }}
             >
               <p
@@ -264,7 +268,7 @@ function ComparePage() {
               >
                 {comparison.rows?.length ?? 0} קריטריוני השוואה
               </p>
-              <div style={{ display: "flex", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "8px", flexWrap:"wrap" }}>
                 <button
                   onClick={async () => {
                     setExportingWord(true);
@@ -302,7 +306,8 @@ function ComparePage() {
                 background: "var(--bg-card)",
                 border: "1px solid var(--border)",
                 borderRadius: "var(--radius-md)",
-                overflow: "hidden",
+                overflowX: "auto",
+                overflowY: "hidden",
                 boxShadow: "var(--shadow-sm)",
               }}
             >
@@ -310,7 +315,8 @@ function ComparePage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "170px 1fr 1fr",
+                  gridTemplateColumns: isCompact ? "130px minmax(220px,1fr) minmax(220px,1fr)" : "170px 1fr 1fr",
+                  minWidth: isCompact ? "570px" : "auto",
                   background: "var(--brand)",
                 }}
               >
@@ -347,7 +353,8 @@ function ComparePage() {
                   key={row.topic + idx}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "170px 1fr 1fr",
+                    gridTemplateColumns: isCompact ? "130px minmax(220px,1fr) minmax(220px,1fr)" : "170px 1fr 1fr",
+                    minWidth: isCompact ? "570px" : "auto",
                     borderTop: "1px solid var(--border)",
                     background:
                       idx % 2 === 0 ? "var(--bg-card)" : "var(--bg-page)",

@@ -276,13 +276,32 @@ function StudentDetail({ student, onBack }) {
           {scores.length===0
             ? <p style={{color:"var(--text-muted)",fontSize:"13px"}}>אין ציונים עדיין</p>
             : history.map(ev => (
-              <div key={ev.id} style={{display:"flex",alignItems:"center",gap:"14px",
+              <div key={ev.id} style={{display:"flex",alignItems:"flex-start",gap:"14px",
                 background:"var(--bg-card)",border:"1px solid var(--border)",
-                borderRadius:"var(--radius-md)",padding:"12px 16px"}}>
+                borderRadius:"var(--radius-md)",padding:"14px 16px"}}>
                 <ScoreCircle score={ev.score} size={44}/>
-                <div style={{flex:1}}>
-                  <p style={{margin:0,fontSize:"13px",fontWeight:600,color:"var(--text-primary)"}}>{ev.title}</p>
-                  <p style={{margin:"3px 0 0",fontSize:"11px",color:"var(--text-muted)"}}>📅 {ev.date}</p>
+                <div style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",gap:"8px"}}>
+                  <div>
+                    <p style={{margin:0,fontSize:"13px",fontWeight:600,color:"var(--text-primary)"}}>{ev.title}</p>
+                    <p style={{margin:"3px 0 0",fontSize:"11px",color:"var(--text-muted)"}}>📅 {ev.date}</p>
+                  </div>
+
+                  {ev.feedback && (
+                    <div style={{background:"var(--bg-page)",border:"1px solid var(--border)",borderRadius:"8px",padding:"10px 12px"}}>
+                      <p style={{margin:"0 0 4px",fontSize:"12px",fontWeight:700,color:"var(--text-primary)"}}>ניתוח התקדמות</p>
+                      <p style={{margin:0,fontSize:"12px",lineHeight:1.6,color:"var(--text-secondary)"}}>{ev.feedback}</p>
+                    </div>
+                  )}
+
+                  {Array.isArray(ev.breakdown) && ev.breakdown.length > 0 && (
+                    <div style={{display:"grid",gap:"6px"}}>
+                      {ev.breakdown.map((item, i) => (
+                        <div key={i} style={{fontSize:"12px",lineHeight:1.55,color:"var(--text-secondary)"}}>
+                          <strong style={{color:"var(--text-primary)"}}>{item.category}:</strong> {item.comment}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             ))
@@ -423,7 +442,7 @@ function LecturerPage() {
               <p style={{margin:0,fontSize:"13px",color:"var(--text-muted)"}}>
                 {students.length} סטודנטים רשומים
               </p>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:"14px"}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(340px,100%),1fr))",gap:"14px"}}>
                 {students.map(s => (
                   <StudentCard key={s.uid} student={s} onClick={()=>setSelected(s)}/>
                 ))}
