@@ -15,8 +15,10 @@ import {
   doc,
   getDoc,
   getDocs,
+  query,
   setDoc,
   updateDoc,
+  where,
 } from "firebase/firestore";
 
 import { auth, db, isFirebaseConfigured } from "./firebase";
@@ -507,4 +509,270 @@ export async function getStudentDocumentSessions(studentUid, documentId) {
     console.error("getStudentDocumentSessions failed:", err);
     return [];
   }
+}
+// ════════════════════════════════════════════════════════════════════════════
+// CLASSES — multi-class support
+// Firestore shape:
+//   classes/{classId}  { id, title, code, lecturerUid, createdAt }
+//   classCodes/{code}  { classId, lecturerUid }        ← reverse lookup
+//   classes/{classId}/students/{uid}   { uid, email, displayName, joinedAt }
+//   classes/{classId}/missions/{mId}   { id, title, description, createdAt }
+//   studentEnrollments/{uid}/classes/{classId}   { classId, classTitle, classCode, lecturerUid, joinedAt }
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Generate a random 6-char class code ─────────────────────────────────────
+function genCode() {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
+// ── Lecturer: check if a class code is free ──────────────────────────────────
+export async function isClassCodeAvailable(code) {
+  if (!isFirebaseConfigured || !db) return true;
+  try {
+    const snap = await getDoc(doc(db, "classCodes", code.toUpperCase()));
+    return !snap.exists();
+  } catch { return true; }
+}
+
+// ── Lecturer: create a new class ─────────────────────────────────────────────
+export async function createClass(title, customCode) {
+  const uid = auth?.currentUser?.uid;
+  if (!uid || !isFirebaseConfigured || !db)
+    throw new Error("חיבור לפיירבייס נדרש");
+
+  const code    = (customCode ?? genCode()).toUpperCase().trim();
+  const classId = `class_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+  // Check code uniqueness
+  const existing = await getDoc(doc(db, "classCodes", code));
+  if (existing.exists()) throw new Error(`הקוד "${code}" תפוס — בחר קוד אחר`);
+
+  const classData = {
+    id:          classId,
+    title:       title.trim(),
+    code,
+    lecturerUid: uid,
+    lecturerEmail: auth.currentUser.email ?? "",
+    createdAt:   Date.now(),
+  };
+
+  await setDoc(doc(db, "classes", classId), classData);
+  await setDoc(doc(db, "classCodes", code), { classId, lecturerUid: uid });
+
+  return classData;
+}
+
+// ── Lecturer: get all their classes ──────────────────────────────────────────
+export async function getLecturerClasses() {
+  const uid = auth?.currentUser?.uid;
+  if (!uid || !isFirebaseConfigured || !db) return [];
+  try {
+    const q    = query(collection(db, "classes"), where("lecturerUid", "==", uid));
+    const snap = await getDocs(q);
+    return snap.docs
+      .map(d => d.data())
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  } catch (err) {
+    console.error("getLecturerClasses failed:", err);
+    return [];
+  }
+}
+
+// ── Lecturer: get students in a specific class ────────────────────────────────
+export async function getClassStudents(classId) {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snap = await getDocs(collection(db, "classes", classId, "students"));
+    return snap.docs
+      .map(d => d.data())
+      .sort((a, b) => (b.joinedAt ?? 0) - (a.joinedAt ?? 0));
+  } catch (err) {
+    console.error("getClassStudents failed:", err);
+    return [];
+  }
+}
+
+// ── Student: join a class by code ─────────────────────────────────────────────
+export async function joinClassByCode(code) {
+  const uid = auth?.currentUser?.uid;
+  if (!uid || !isFirebaseConfigured || !db)
+    throw new Error("חיבור לפיירבייס נדרש");
+
+  const upper    = code.toUpperCase().trim();
+  const codeSnap = await getDoc(doc(db, "classCodes", upper));
+  if (!codeSnap.exists())
+    throw new Error(`הקוד "${upper}" לא נמצא — בדוק שהקוד נכון`);
+
+  const { classId } = codeSnap.data();
+
+  // Check if already enrolled
+  const enrollSnap = await getDoc(
+    doc(db, "studentEnrollments", uid, "classes", classId)
+  );
+  if (enrollSnap.exists()) throw new Error("כבר הצטרפת לכיתה זו");
+
+  // Get class info
+  const classSnap = await getDoc(doc(db, "classes", classId));
+  if (!classSnap.exists()) throw new Error("הכיתה לא נמצאה");
+  const classData = classSnap.data();
+
+  // Add student to the class
+  const profile = {
+    uid,
+    email:       auth.currentUser.email ?? "",
+    displayName: auth.currentUser.displayName ?? auth.currentUser.email ?? "סטודנט",
+    joinedAt:    Date.now(),
+  };
+  await setDoc(doc(db, "classes", classId, "students", uid), profile, { merge: true });
+
+  // Save enrollment for the student
+  await setDoc(doc(db, "studentEnrollments", uid, "classes", classId), {
+    classId,
+    classTitle:  classData.title,
+    classCode:   upper,
+    lecturerUid: classData.lecturerUid,
+    joinedAt:    Date.now(),
+  });
+
+  return classData;
+}
+
+// ── Student: get all enrolled classes ────────────────────────────────────────
+export async function getStudentClasses() {
+  const uid = auth?.currentUser?.uid;
+  if (!uid || !isFirebaseConfigured || !db) return [];
+  try {
+    const snap = await getDocs(
+      collection(db, "studentEnrollments", uid, "classes")
+    );
+    return snap.docs
+      .map(d => d.data())
+      .sort((a, b) => (b.joinedAt ?? 0) - (a.joinedAt ?? 0));
+  } catch (err) {
+    console.error("getStudentClasses failed:", err);
+    return [];
+  }
+}
+
+// ── Missions ──────────────────────────────────────────────────────────────────
+
+export async function addMissionToClass(classId, { title, description }) {
+  const uid = auth?.currentUser?.uid;
+  if (!uid || !isFirebaseConfigured || !db)
+    throw new Error("חיבור לפיירבייס נדרש");
+
+  const missionId = `mission_${Date.now()}`;
+  const mission   = {
+    id:          missionId,
+    title:       title.trim(),
+    description: (description ?? "").trim(),
+    classId,
+    lecturerUid: uid,
+    createdAt:   Date.now(),
+  };
+  await setDoc(doc(db, "classes", classId, "missions", missionId), mission);
+  return mission;
+}
+
+export async function getClassMissions(classId) {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snap = await getDocs(collection(db, "classes", classId, "missions"));
+    return snap.docs
+      .map(d => d.data())
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  } catch (err) {
+    console.error("getClassMissions failed:", err);
+    return [];
+  }
+}
+
+export async function deleteMission(classId, missionId) {
+  if (!isFirebaseConfigured || !db) return;
+  try {
+    await deleteDoc(doc(db, "classes", classId, "missions", missionId));
+  } catch (err) {
+    console.error("deleteMission failed:", err);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MISSION SUBMISSIONS — class work visible to lecturer
+// Path: classes/{classId}/missions/{missionId}/submissions/{uid}
+//       classes/{classId}/missions/{missionId}/submissions/{uid}/messages/{msgId}
+// ════════════════════════════════════════════════════════════════════════════
+
+// Save / update a student's submission record for a mission
+export async function saveMissionSubmission(classId, missionId, data) {
+  const uid = auth?.currentUser?.uid;
+  if (!uid || !isFirebaseConfigured || !db) return;
+  try {
+    await setDoc(
+      doc(db, "classes", classId, "missions", missionId, "submissions", uid),
+      { uid, email: auth.currentUser.email ?? "", ...data, updatedAt: Date.now() },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error("saveMissionSubmission failed:", err);
+  }
+}
+
+// Get current student's own submission for a mission
+export async function getMyMissionSubmission(classId, missionId) {
+  const uid = auth?.currentUser?.uid;
+  if (!uid || !isFirebaseConfigured || !db) return null;
+  try {
+    const snap = await getDoc(
+      doc(db, "classes", classId, "missions", missionId, "submissions", uid)
+    );
+    return snap.exists() ? snap.data() : null;
+  } catch { return null; }
+}
+
+// Append a message to the mission chat
+export async function appendMissionMessage(classId, missionId, message) {
+  const uid = auth?.currentUser?.uid;
+  if (!uid || !isFirebaseConfigured || !db) return;
+  try {
+    await setDoc(
+      doc(db, "classes", classId, "missions", missionId, "submissions", uid, "messages", message.id),
+      message
+    );
+  } catch (err) {
+    console.error("appendMissionMessage failed:", err);
+  }
+}
+
+// Get current student's mission messages
+export async function getMissionMessages(classId, missionId) {
+  const uid = auth?.currentUser?.uid;
+  if (!uid || !isFirebaseConfigured || !db) return [];
+  try {
+    const snap = await getDocs(
+      collection(db, "classes", classId, "missions", missionId, "submissions", uid, "messages")
+    );
+    return snap.docs.map(d => d.data()).sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  } catch { return []; }
+}
+
+// Lecturer: get all submissions for a mission
+export async function getAllMissionSubmissions(classId, missionId) {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snap = await getDocs(
+      collection(db, "classes", classId, "missions", missionId, "submissions")
+    );
+    return snap.docs.map(d => d.data()).sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
+  } catch { return []; }
+}
+
+// Lecturer: get a specific student's messages for a mission
+export async function getStudentMissionMessages(classId, missionId, studentUid) {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snap = await getDocs(
+      collection(db, "classes", classId, "missions", missionId, "submissions", studentUid, "messages")
+    );
+    return snap.docs.map(d => d.data()).sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+  } catch { return []; }
 }
