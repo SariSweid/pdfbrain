@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { callClaude, callClaudeMultiturn } from "../../lib/anthropicClient";
+import { callClaude, callClaudeMultiturn } from "../lib/anthropicClient";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Sidebar from "../components/Sidebar";
