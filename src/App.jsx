@@ -4,7 +4,7 @@ import RegisterPage from "./features/auth/RegisterPage";
 import MainLayout   from "./layouts/MainLayout";
 import useAuth      from "./features/auth/useAuth";
 import { isFirebaseConfigured } from "./lib/firebase";
-import { loadUserProfile, saveUserRole } from "./lib/localStore";
+import { loadUserProfile } from "./lib/localStore";
 
 // ── Shared wrappers ───────────────────────────────────────────────────────────
 function GradientBg({ children }) {
@@ -23,39 +23,6 @@ function AppLoader() {
       <div style={{ width:"34px", height:"34px", border:"3px solid rgba(255,255,255,.2)",
         borderTopColor:"#fff", borderRadius:"50%", animation:"spin .7s linear infinite" }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </GradientBg>
-  );
-}
-
-// ── Role selector ─────────────────────────────────────────────────────────────
-function RoleSelector({ onSelect }) {
-  return (
-    <GradientBg>
-      <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:"28px" }}>
-        <div style={{ textAlign:"center" }}>
-          <div style={{ fontSize:"52px", marginBottom:"10px" }}>🧠</div>
-          <h1 style={{ color:"#fff", fontSize:"26px", fontWeight:800, margin:0 }}>PDFBrain</h1>
-          <p style={{ color:"rgba(255,255,255,.6)", fontSize:"14px", margin:"8px 0 0" }}>מי אתה?</p>
-        </div>
-        <div style={{ display:"flex", gap:"16px" }}>
-          {[
-            { id:"student",  emoji:"👨‍🎓", label:"סטודנט",  desc:"לומד, מתרגל ומקבל ציון" },
-            { id:"lecturer", emoji:"👨‍🏫", label:"מרצה",    desc:"מנהל כיתות ועוקב אחר סטודנטים" },
-          ].map(({ id, emoji, label, desc }) => (
-            <button key={id} onClick={() => onSelect(id)}
-              style={{ background:"rgba(255,255,255,.1)", border:"1.5px solid rgba(255,255,255,.25)",
-                borderRadius:"16px", padding:"28px 32px", color:"#fff", cursor:"pointer",
-                textAlign:"center", fontFamily:"inherit" }}
-              onMouseEnter={e => e.currentTarget.style.background="rgba(255,255,255,.2)"}
-              onMouseLeave={e => e.currentTarget.style.background="rgba(255,255,255,.1)"}
-            >
-              <div style={{ fontSize:"36px", marginBottom:"10px" }}>{emoji}</div>
-              <div style={{ fontSize:"17px", fontWeight:700 }}>{label}</div>
-              <div style={{ fontSize:"12px", color:"rgba(255,255,255,.6)", marginTop:"4px" }}>{desc}</div>
-            </button>
-          ))}
-        </div>
-      </div>
     </GradientBg>
   );
 }
@@ -80,13 +47,7 @@ function App() {
 
   // ── No-Firebase mode ──────────────────────────────────────────────────────
   if (!isFirebaseConfigured) {
-    const localRole = localStorage.getItem("pdfbrain:role");
-    if (!localRole) {
-      return <RoleSelector onSelect={(r) => {
-        localStorage.setItem("pdfbrain:role", r);
-        window.location.reload();
-      }} />;
-    }
+    const localRole = localStorage.getItem("pdfbrain:role") || "student";
     return (
       <div dir="rtl" style={{ height:"100vh", overflow:"hidden" }}>
         <MainLayout role={localRole} onLogout={null} />
@@ -95,7 +56,9 @@ function App() {
   }
 
   // ── Firebase mode ─────────────────────────────────────────────────────────
-  if (authLoading || profileLoading) return <AppLoader />;
+  // Show spinner while auth is loading OR while profile is loading OR
+  // if we are logged in but profile hasn't arrived yet (prevents the role flash)
+  if (authLoading || profileLoading || (isLoggedIn && !userProfile)) return <AppLoader />;
 
   if (!isLoggedIn) {
     return authView === "login" ? (
@@ -113,16 +76,6 @@ function App() {
           return true;
         }}
       />
-    );
-  }
-
-  // No role yet → show selector
-  if (!userProfile?.role) {
-    return (
-      <RoleSelector onSelect={async (r) => {
-        await saveUserRole(r);
-        setUserProfile({ role: r });
-      }} />
     );
   }
 
