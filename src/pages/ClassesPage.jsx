@@ -8,7 +8,10 @@ import {
 } from "../lib/localStore";
 import { isFirebaseConfigured } from "../lib/firebase";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:3001";
+// Uses Render backend when set, falls back to Vercel serverless function
+const CLAUDE_URL = import.meta.env.VITE_BACKEND_URL
+  ? `${import.meta.env.VITE_BACKEND_URL}/api/claude`
+  : "/api/claude";
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 function MD({ text }) {
@@ -73,51 +76,93 @@ ${pdfText ? `הסטודנט העלה את המסמך: "${pdfTitle}". תוכן: $
 
   // Send a message
   const send = async (text, isAuto = false) => {
-    if ((!text.trim() && !isAuto) || loading) return;
-    const userMsg = { id: crypto.randomUUID(), sender: "user", text: text.trim(), createdAt: Date.now() };
+    if ((!text?.trim() && !isAuto) || loading) return;
+    const msgText = (text ?? "").trim();
+    const userMsg = { id: crypto.randomUUID(), sender: "user", text: msgText, createdAt: Date.now() };
 
     if (!isAuto) {
       setMessages(prev => [...(prev ?? []), userMsg]);
       setInputValue("");
-      await appendMissionMessage(cls.id, mission.id, userMsg);
-      // Ensure submission record exists
-      await saveMissionSubmission(cls.id, mission.id, {
+      appendMissionMessage(cls.id, mission.id, userMsg).catch(() => {});
+      saveMissionSubmission(cls.id, mission.id, {
         displayName: "", pdfTitle, lastMessageAt: Date.now(),
-      });
+      }).catch(() => {});
     }
 
     setLoading(true);
     try {
-      const history = [...(messages ?? []), ...(isAuto ? [] : [userMsg])];
-      const res = await fetch(`${BACKEND_URL}/api/claude`, {
+      // Build conversation history
+      const currentMsgs = messages ?? [];
+      const allMsgs = isAuto ? currentMsgs : [...currentMsgs, userMsg];
+
+      // ── Anthropic requires conversations to START with a user message ──
+      // Drop any leading assistant messages from history
+      let apiMessages = allMsgs.map(m => ({
+        role: m.sender === "user" ? "user" : "assistant",
+        content: m.text,
+      }));
+      while (apiMessages.length > 0 && apiMessages[0].role !== "user") {
+        apiMessages = apiMessages.slice(1);
+      }
+
+      // For auto prompts, append the trigger as a user turn
+      if (isAuto) {
+        apiMessages.push({ role: "user", content: msgText });
+      }
+
+      // Fallback: must have at least one user message
+      if (apiMessages.length === 0) {
+        apiMessages = [{ role: "user", content: msgText }];
+      }
+
+      const res = await fetch(CLAUDE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-6",
           max_tokens: 800,
           system: systemPrompt,
-          messages: history.map(m => ({ role: m.sender === "user" ? "user" : "assistant", content: m.text }))
-            .concat(isAuto ? [{ role: "user", content: text }] : []),
+          messages: apiMessages,
         }),
       });
-      const data    = await res.json();
+
+      // Safe parse — never call .json() on an empty body
+      const rawText = await res.text();
+      if (!rawText.trim()) {
+        throw new Error(`השרת לא החזיר תגובה (${res.status}). בדוק שה-API מוגדר נכון.`);
+      }
+      let data;
+      try { data = JSON.parse(rawText); }
+      catch { throw new Error("תגובה לא תקינה מהשרת"); }
+
+      if (!res.ok) {
+        throw new Error(data.error?.message ?? `שגיאת שרת ${res.status}`);
+      }
+
       const botText = data.content?.[0]?.text ?? "לא קיבלתי תשובה";
       const botMsg  = { id: crypto.randomUUID(), sender: "bot", text: botText, createdAt: Date.now() + 1 };
       setMessages(prev => [...(prev ?? []), botMsg]);
-      await appendMissionMessage(cls.id, mission.id, botMsg);
+      appendMissionMessage(cls.id, mission.id, botMsg).catch(() => {});
+
     } catch (err) {
-      const errMsg = { id: crypto.randomUUID(), sender: "bot", text: `שגיאה: ${err.message}`, createdAt: Date.now() };
+      const errMsg = {
+        id: crypto.randomUUID(), sender: "bot",
+        text: `⚠️ ${err.message}`, createdAt: Date.now(),
+      };
       setMessages(prev => [...(prev ?? []), errMsg]);
     } finally {
       setLoading(false);
     }
   };
 
-  // Auto-start if no messages yet
+  // Auto-start: bot opens with first question when chat is empty
   useEffect(() => {
     if (messages !== null && messages.length === 0) {
-      send("התחל שיחה חינוכית — הצג את עצמך בקצרה ושאל את השאלה הראשונה על המשימה.", true);
+      const autoText = "התחל שיחה חינוכית — הצג את עצמך בקצרה ושאל שאלה ראשונה על המשימה.";
+      // Wrap async call so useEffect doesn't return a Promise
+      void send(autoText, true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
 
   // Upload PDF
@@ -409,10 +454,9 @@ function JoinPanel({ onJoined }) {
 
   const handleJoin = async () => {
     if (code.trim().length < 4 || loading) return;
-    const { joinClassByCode: join } = await import("../lib/localStore");
     setLoading(true); setError(""); setSuccess("");
     try {
-      const cls = await join(code);
+      const cls = await joinClassByCode(code);
       setSuccess(`הצטרפת בהצלחה לכיתה "${cls.title}" 🎉`);
       setCode("");
       setTimeout(() => { setSuccess(""); onJoined(); }, 1800);
@@ -452,7 +496,7 @@ export default function ClassesPage() {
   const [classes,       setClasses]       = useState(null);
   const [activeEnroll,  setActiveEnroll]  = useState(null);
 
-  const load = () => getStudentClasses().then(setClasses).catch(() => setClasses([]));
+  const load = () => { getStudentClasses().then(setClasses).catch(() => setClasses([])); };
   useEffect(load, []);
 
   if (!isFirebaseConfigured) {

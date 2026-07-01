@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { callClaude, callClaudeMultiturn } from "../../lib/anthropicClient";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Sidebar from "../components/Sidebar";
@@ -217,23 +218,11 @@ function ChatPage() {
       }).catch(() => {});
 
       // Generate analysis
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1200,
-          system: "אתה מנתח מאמרים אקדמיים. ספק ניתוח מפורט ומובנה בעברית, השתמש ב-Markdown (כותרות, טבלאות, bold) כדי לארגן את המידע.",
-          messages: [{ role: "user", content: `נתח את המאמר הבא וספק:\n1. **תקציר** (3-4 משפטים)\n2. **שאלת המחקר הראשית**\n3. **מתודולוגיה** (טבלה אם אפשר)\n4. **ממצאים עיקריים**\n5. **אלגוריתמים/שיטות** (ציין עמוד/סעיף)\n6. **מסקנות**\n\nהמאמר:\n${newDoc.extractedText?.slice(0, 8000) || newDoc.title}` }],
-        }),
-      });
-      const data = await res.json();
-      const analysisText = data.content?.[0]?.text ?? "לא הצלחתי לנתח.";
+      const analysisText = await callClaudeMultiturn({
+        system: "אתה מנתח מאמרים אקדמיים. ספק ניתוח מפורט ומובנה בעברית, השתמש ב-Markdown (כותרות, טבלאות, bold) כדי לארגן את המידע.",
+        messages: [{ role: "user", content: `נתח את המאמר הבא וספק:\n1. **תקציר** (3-4 משפטים)\n2. **שאלת המחקר הראשית**\n3. **מתודולוגיה** (טבלה אם אפשר)\n4. **ממצאים עיקריים**\n5. **אלגוריתמים/שיטות** (ציין עמוד/סעיף)\n6. **מסקנות**\n\nהמאמר:\n${newDoc.extractedText?.slice(0, 8000) || newDoc.title}` }],
+        maxTokens: 1200,
+      }).catch(() => "לא הצלחתי לנתח.");
 
       // ── Save analysis INTO the document so it survives reload ──────────
       await handleUpdateDocument(newDoc.id, { analysis: analysisText });
@@ -304,31 +293,17 @@ function ChatPage() {
         .map((m) => `${m.sender === "user" ? "סטודנט" : "מורה"}: ${m.text}`)
         .join("\n");
 
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1000,
-          // English system prompt is more reliable for strict JSON output
-          system: `You are an academic grader. Evaluate the student's answers in the conversation.
+            const rawText = await callClaudeMultiturn({
+        system: `You are an academic grader. Evaluate the student's answers in the conversation.
 Output ONLY a valid JSON object — no intro text, no explanation, no markdown fences.
 Exact shape required:
 {"score":<integer 0-100>,"feedback":"<1-2 Hebrew sentences>","breakdown":[{"category":"הבנת תוכן","comment":"<Hebrew>"},{"category":"איכות תשובות","comment":"<Hebrew>"},{"category":"מעורבות","comment":"<Hebrew>"}]}`,
-          messages: [{
-            role: "user",
-            content: `Grade this teacher-student conversation and return ONLY the JSON:\n\n${conversationText}`,
-          }],
-        }),
-      });
+        messages: [{ role: "user", content: `Grade this teacher-student conversation and return ONLY the JSON:
 
-      const data = await res.json();
-      const rawText = (data.content?.[0]?.text ?? "").trim();
+${conversationText}` }],
+        maxTokens: 1000,
+      });
+      
 
       // Extract the JSON object even if Claude wrapped it in surrounding text
       const jsonMatch = rawText.match(/\{[\s\S]*\}/);
