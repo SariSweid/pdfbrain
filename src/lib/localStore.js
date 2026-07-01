@@ -785,21 +785,40 @@ export async function getStudentMissionMessages(classId, missionId, studentUid) 
 export async function saveMissionGrade(classId, missionId, gradeData) {
   const uid = auth?.currentUser?.uid;
   if (!uid || !isFirebaseConfigured || !db) return;
+
+  const gradeEntry = { ...gradeData, gradedAt: Date.now() };
+
+  // Read existing grades array from submission doc
+  let existingGrades = [];
   try {
-    const gradeId = `grade_${Date.now()}`;
-    // Save to permanent grades subcollection
+    const snap = await getDoc(doc(db, "classes", classId, "missions", missionId, "submissions", uid));
+    if (snap.exists()) existingGrades = snap.data().grades ?? [];
+  } catch { /* first submission */ }
+
+  const updatedGrades = [gradeEntry, ...existingGrades].slice(0, 20);
+
+  // Save grade to submission document (grades array — lecturer can always read this)
+  await setDoc(
+    doc(db, "classes", classId, "missions", missionId, "submissions", uid),
+    {
+      uid,
+      email:         auth.currentUser.email ?? "",
+      latestGrade:   gradeData.score,
+      lastGradedAt:  Date.now(),
+      grades:        updatedGrades,   // ← array of all attempts
+      updatedAt:     Date.now(),
+    },
+    { merge: true }
+  );
+
+  // Also save to grades subcollection (belt-and-suspenders)
+  try {
     await setDoc(
-      doc(db, "classes", classId, "missions", missionId, "submissions", uid, "grades", gradeId),
-      { ...gradeData, uid, gradedAt: Date.now() }
-    );
-    // Also update submission summary (latest grade)
-    await setDoc(
-      doc(db, "classes", classId, "missions", missionId, "submissions", uid),
-      { latestGrade: gradeData.score, lastGradedAt: Date.now(), uid, email: auth.currentUser.email ?? "" },
-      { merge: true }
+      doc(db, "classes", classId, "missions", missionId, "submissions", uid, "grades", `grade_${Date.now()}`),
+      { ...gradeEntry, uid }
     );
   } catch (err) {
-    console.error("saveMissionGrade failed:", err);
+    console.error("grades subcollection write failed (non-critical):", err);
   }
 }
 
@@ -819,9 +838,16 @@ export async function getMyMissionGrades(classId, missionId) {
 export async function getStudentMissionGrades(classId, missionId, studentUid) {
   if (!isFirebaseConfigured || !db) return [];
   try {
-    const snap = await getDocs(
-      collection(db, "classes", classId, "missions", missionId, "submissions", studentUid, "grades")
+    // Read from submission doc (reliable — lecturer already has read permission here)
+    const snap = await getDoc(
+      doc(db, "classes", classId, "missions", missionId, "submissions", studentUid)
     );
-    return snap.docs.map(d => d.data()).sort((a, b) => (b.gradedAt ?? 0) - (a.gradedAt ?? 0));
-  } catch { return []; }
+    if (snap.exists() && snap.data().grades?.length) {
+      return [...snap.data().grades].sort((a, b) => (b.gradedAt ?? 0) - (a.gradedAt ?? 0));
+    }
+    return [];
+  } catch (err) {
+    console.error("getStudentMissionGrades failed:", err);
+    return [];
+  }
 }

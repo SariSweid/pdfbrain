@@ -4,8 +4,7 @@ import remarkGfm from "remark-gfm";
 import {
   getLecturerClasses, createClass, isClassCodeAvailable,
   getClassStudents, getClassMissions, addMissionToClass, deleteMission,
-  getStudentDocuments, getStudentHistory, getStudentMessages,
-  getStudentDocumentSessions,
+
   getAllMissionSubmissions, getStudentMissionMessages, getStudentMissionGrades,
 } from "../lib/localStore";
 import { isFirebaseConfigured } from "../lib/firebase";
@@ -39,71 +38,41 @@ function Score({ score, size = 36 }) {
 }
 
 // ── Chat session viewer ───────────────────────────────────────────────────────
-function SessionBlock({ session, idx }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{ border:"1px solid var(--border)", borderRadius:"8px", overflow:"hidden", marginTop:"6px" }}>
-      <div onClick={() => setOpen(o=>!o)} style={{ display:"flex", gap:"8px",
-        alignItems:"center", padding:"9px 13px", cursor:"pointer",
-        background:"var(--bg-page)" }}>
-        <span style={{ fontSize:"12px" }}>{open?"▲":"▼"}</span>
-        <span style={{ fontSize:"13px", fontWeight:600, color:"var(--text-primary)", flex:1 }}>
-          שיחה {idx+1}
-        </span>
-        <span style={{ fontSize:"11px", color:"var(--text-muted)" }}>
-          {new Date(session.createdAt).toLocaleDateString("he-IL")} · {session.messages?.length ?? 0} הודעות
-        </span>
-      </div>
-      {open && (
-        <div style={{ padding:"10px 13px", display:"flex", flexDirection:"column", gap:"8px",
-          maxHeight:"300px", overflowY:"auto", borderTop:"1px solid var(--border)" }}>
-          {session.messages?.map(msg => (
-            <div key={msg.id} style={{ display:"flex", gap:"7px",
-              flexDirection: msg.sender==="bot" ? "row" : "row-reverse" }}>
-              <div style={{ width:"24px", height:"24px", borderRadius:"50%",
-                background: msg.sender==="bot" ? "#6366f1" : "#9ca3af",
-                display:"flex", alignItems:"center", justifyContent:"center",
-                fontSize:"12px", flexShrink:0 }}>
-                {msg.sender==="bot" ? "🧠" : "👤"}
-              </div>
-              <div style={{ maxWidth:"80%", padding:"7px 11px",
-                borderRadius: msg.sender==="bot" ? "12px 12px 12px 4px" : "12px 12px 4px 12px",
-                background: msg.sender==="bot" ? "var(--msg-bot-bg)" : "var(--msg-user-bg)",
-                border: msg.sender==="bot" ? "1px solid var(--border)" : "none",
-                direction:"rtl", textAlign:"right" }}>
-                <span style={{ fontSize:"13px", lineHeight:1.6 }}>{msg.text}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Student detail inside a class ─────────────────────────────────────────────
-function StudentDetail({ student, onBack }) {
-  const [tab,     setTab]     = useState("docs");
-  const [docs,    setDocs]    = useState(null);
-  const [history, setHistory] = useState(null);
+// ── Student in class view (missions + grades + chat) ────────────────────────
+function StudentInClassView({ student, cls, onBack }) {
+  const [missions,  setMissions]  = useState(null);
+  const [expanded,  setExpanded]  = useState(null);
+  const [msnData,   setMsnData]   = useState({});
+  const [loading,   setLoading]   = useState({});
 
   useEffect(() => {
-    Promise.all([
-      getStudentDocuments(student.uid).catch(()=>[]),
-      getStudentHistory(student.uid).catch(()=>[]),
-    ]).then(([d,h]) => { setDocs(d); setHistory(h); });
-  }, [student.uid]);
+    getClassMissions(cls.id).then(setMissions).catch(() => setMissions([]));
+  }, [cls.id]);
 
-  const scores = history?.filter(e=>typeof e.score==="number").map(e=>e.score) ?? [];
-  const avg    = scores.length ? Math.round(scores.reduce((a,b)=>a+b,0)/scores.length) : null;
+  const toggle = async (mId) => {
+    if (expanded === mId) { setExpanded(null); return; }
+    setExpanded(mId);
+    if (!msnData[mId]) {
+      setLoading(p => ({ ...p, [mId]: true }));
+      const [grades, messages] = await Promise.all([
+        getStudentMissionGrades(cls.id, mId, student.uid).catch(() => []),
+        getStudentMissionMessages(cls.id, mId, student.uid).catch(() => []),
+      ]);
+      setMsnData(p => ({ ...p, [mId]: { grades, messages } }));
+      setLoading(p => ({ ...p, [mId]: false }));
+    }
+  };
+
+  const scoreColor = s => s >= 80 ? "#22c55e" : s >= 60 ? "#f59e0b" : "#ef4444";
+  const allScores  = Object.values(msnData).flatMap(d => d.grades?.map(g => g.score) ?? []).filter(s => typeof s === "number");
+  const avg        = allScores.length ? Math.round(allScores.reduce((a,b)=>a+b,0)/allScores.length) : null;
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:"16px" }}>
+    <div style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
+
+      {/* Header */}
       <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
-        <button onClick={onBack} style={{ background:"transparent",
-          border:"1px solid var(--border)", borderRadius:"var(--radius-sm)",
-          padding:"6px 14px", color:"var(--text-secondary)", cursor:"pointer",
-          fontFamily:"inherit", fontSize:"13px" }}>← חזרה</button>
+        <button onClick={onBack} style={{ background:"transparent", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", padding:"6px 14px", color:"var(--text-secondary)", cursor:"pointer", fontFamily:"inherit", fontSize:"13px" }}>← חזרה לסטודנטים</button>
         <div style={{ flex:1 }}>
           <h3 style={{ margin:0, fontSize:"16px", fontWeight:700, color:"var(--text-primary)" }}>
             👨‍🎓 {student.displayName || student.email}
@@ -113,223 +82,96 @@ function StudentDetail({ student, onBack }) {
         {avg !== null && <Score score={avg} size={44}/>}
       </div>
 
-      <div style={{ display:"flex", gap:"4px", background:"var(--bg-card)",
-        borderRadius:"var(--radius-sm)", padding:"3px", border:"1px solid var(--border)",
-        alignSelf:"flex-start" }}>
-        {[["docs","📄 מאמרים"],["grades","🏁 ציונים"]].map(([id,lbl]) => (
-          <button key={id} onClick={()=>setTab(id)} style={{
-            background: tab===id?"var(--brand)":"transparent",
-            color: tab===id?"#fff":"var(--text-secondary)",
-            border:"none", borderRadius:"6px", padding:"6px 14px",
-            fontSize:"13px", fontWeight: tab===id?700:400,
-            cursor:"pointer", fontFamily:"inherit" }}>{lbl}</button>
-        ))}
-      </div>
+      {/* Mission list */}
+      {missions === null && <div style={{ display:"flex", gap:"8px", color:"var(--text-muted)", fontSize:"13px", alignItems:"center" }}><Spin/>טוען משימות...</div>}
+      {missions?.length === 0 && <p style={{ color:"var(--text-muted)", fontSize:"13px" }}>אין משימות בכיתה זו</p>}
 
-      {docs===null && <div style={{ display:"flex", gap:"8px", color:"var(--text-muted)", fontSize:"13px" }}><Spin/>טוען...</div>}
+      {missions?.map(m => {
+        const data    = msnData[m.id];
+        const isOpen  = expanded === m.id;
+        const topGrade = data?.grades?.[0]?.score ?? null;
+        const msgs     = data?.messages ?? [];
+        return (
+          <div key={m.id} style={{ background:"var(--bg-card)", border:"1px solid var(--border)", borderRadius:"var(--radius-md)", overflow:"hidden" }}>
 
-      {tab==="docs" && docs && (
-        <div style={{ display:"flex", flexDirection:"column", gap:"10px" }}>
-          {docs.length===0
-            ? <p style={{ color:"var(--text-muted)", fontSize:"13px" }}>לא הועלו מאמרים</p>
-            : docs.map(doc => <DocRow key={doc.id} doc={doc} studentUid={student.uid}/>)}
-        </div>
-      )}
-
-      {tab==="grades" && history && (
-        <div style={{ display:"flex", flexDirection:"column", gap:"8px" }}>
-          {scores.length===0
-            ? <p style={{ color:"var(--text-muted)", fontSize:"13px" }}>אין ציונים עדיין</p>
-            : history.filter(e=>typeof e.score==="number").map(ev => (
-              <div key={ev.id} style={{ display:"flex", alignItems:"center", gap:"12px",
-                background:"var(--bg-card)", border:"1px solid var(--border)",
-                borderRadius:"var(--radius-sm)", padding:"10px 14px" }}>
-                <Score score={ev.score}/>
-                <div style={{ flex:1 }}>
-                  <p style={{ margin:0, fontSize:"13px", fontWeight:600, color:"var(--text-primary)" }}>{ev.title}</p>
-                  <p style={{ margin:"2px 0 0", fontSize:"11px", color:"var(--text-muted)" }}>📅 {ev.date}</p>
-                </div>
+            {/* Mission row */}
+            <div style={{ display:"flex", alignItems:"center", gap:"10px", padding:"12px 16px", cursor:"pointer" }} onClick={() => toggle(m.id)}>
+              <span style={{ fontSize:"18px" }}>📋</span>
+              <div style={{ flex:1 }}>
+                <p style={{ margin:0, fontWeight:600, fontSize:"13px", color:"var(--text-primary)" }}>{m.title}</p>
+                {data && data.grades?.length === 0 && data.messages?.length === 0 && (
+                  <p style={{ margin:"2px 0 0", fontSize:"11px", color:"var(--text-muted)" }}>לא הגיש עדיין</p>
+                )}
+                {data && (data.grades?.length > 0 || data.messages?.length > 0) && (
+                  <p style={{ margin:"2px 0 0", fontSize:"11px", color:"var(--text-muted)" }}>
+                    {msgs.length} הודעות · {data.grades?.length ?? 0} ציונים
+                  </p>
+                )}
               </div>
-            ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── DocRow with sessions ──────────────────────────────────────────────────────
-function DocRow({ doc, studentUid }) {
-  const [open,     setOpen]     = useState(false);
-  const [sessions, setSessions] = useState(null);
-  const [active,   setActive]   = useState(null);
-  const [loading,  setLoading]  = useState(false);
-
-  const toggle = async () => {
-    const next = !open; setOpen(next);
-    if (next && sessions===null) {
-      setLoading(true);
-      const [s,m] = await Promise.all([
-        getStudentDocumentSessions(studentUid, doc.id).catch(()=>[]),
-        getStudentMessages(studentUid, doc.id).catch(()=>[]),
-      ]);
-      setSessions(s); setActive(m); setLoading(false);
-    }
-  };
-
-  const all = [
-    ...(active?.length ? [{ id:"__live__", messages:active, createdAt:Date.now(), live:true }] : []),
-    ...(sessions ?? []),
-  ];
-
-  return (
-    <div style={{ background:"var(--bg-card)", border:"1px solid var(--border)",
-      borderRadius:"var(--radius-md)", overflow:"hidden" }}>
-      <div style={{ display:"flex", alignItems:"center", gap:"10px", padding:"11px 14px" }}>
-        <span style={{ fontSize:"18px" }}>📄</span>
-        <div style={{ flex:1 }}>
-          <p style={{ margin:0, fontWeight:600, fontSize:"13px", color:"var(--text-primary)" }}>{doc.title}</p>
-          <p style={{ margin:"2px 0 0", fontSize:"11px", color:"var(--text-muted)" }}>
-            {doc.date}{doc.pageCount?` · ${doc.pageCount} עמ׳`:""}
-          </p>
-        </div>
-        <button onClick={toggle} style={{ background:open?"var(--brand)":"var(--bg-page)",
-          border:"1px solid var(--border)", borderRadius:"var(--radius-sm)",
-          color:open?"#fff":"var(--text-secondary)", cursor:"pointer",
-          padding:"5px 12px", fontSize:"12px", fontWeight:600, fontFamily:"inherit" }}>
-          {open ? "▲ סגור" : `▼ שיחות${sessions!==null?` (${all.length})`:""}`}
-        </button>
-      </div>
-      {open && (
-        <div style={{ padding:"0 14px 12px", borderTop:"1px solid var(--border)" }}>
-          {loading && <div style={{ display:"flex", gap:"8px", padding:"10px 0", color:"var(--text-muted)", fontSize:"13px" }}><Spin/>טוען...</div>}
-          {!loading && all.length===0 && <p style={{ color:"var(--text-muted)", fontSize:"13px", marginTop:"10px" }}>אין שיחות</p>}
-          {!loading && all.map((sess, i) => (
-            sess.live ? (
-              <div key="live" style={{ border:"1px solid #6366f1", borderRadius:"8px", overflow:"hidden", marginTop:"8px" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:"8px", padding:"9px 13px", background:"var(--brand-light)" }}>
-                  <span style={{ fontSize:"11px", fontWeight:700, color:"var(--brand)",
-                    background:"var(--brand-light)", border:"1px solid var(--brand)",
-                    borderRadius:"12px", padding:"2px 8px" }}>שיחה פעילה</span>
-                  <span style={{ fontSize:"12px", color:"var(--text-muted)" }}>{sess.messages.length} הודעות</span>
+              {topGrade !== null && (
+                <div style={{ width:"36px", height:"36px", borderRadius:"50%", background:scoreColor(topGrade), color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"13px", fontWeight:800, flexShrink:0 }}>
+                  {topGrade}
                 </div>
-                <div style={{ padding:"10px 13px", display:"flex", flexDirection:"column", gap:"7px",
-                  maxHeight:"260px", overflowY:"auto" }}>
-                  {sess.messages.map(msg => (
-                    <div key={msg.id} style={{ display:"flex", gap:"7px",
-                      flexDirection:msg.sender==="bot"?"row":"row-reverse" }}>
-                      <div style={{ width:"22px", height:"22px", borderRadius:"50%",
-                        background:msg.sender==="bot"?"#6366f1":"#9ca3af",
-                        display:"flex", alignItems:"center", justifyContent:"center", fontSize:"11px", flexShrink:0 }}>
-                        {msg.sender==="bot"?"🧠":"👤"}
-                      </div>
-                      <span style={{ maxWidth:"80%", padding:"6px 10px",
-                        borderRadius:"10px", background:msg.sender==="bot"?"var(--msg-bot-bg)":"var(--msg-user-bg)",
-                        border:msg.sender==="bot"?"1px solid var(--border)":"none",
-                        fontSize:"12px", lineHeight:1.5, direction:"rtl" }}>{msg.text}</span>
+              )}
+              <span style={{ color:"var(--text-muted)", fontSize:"12px" }}>{isOpen ? "▲" : "▼"}</span>
+            </div>
+
+            {/* Expanded: grades + chat */}
+            {isOpen && (
+              <div style={{ borderTop:"1px solid var(--border)", padding:"12px 16px" }}>
+                {loading[m.id] && <div style={{ display:"flex", gap:"8px", color:"var(--text-muted)", fontSize:"13px", alignItems:"center" }}><Spin/>טוען...</div>}
+
+                {/* Grade history */}
+                {!loading[m.id] && data?.grades?.length > 0 && (
+                  <div style={{ marginBottom:"14px" }}>
+                    <p style={{ margin:"0 0 8px", fontSize:"11px", fontWeight:700, color:"var(--text-muted)", textTransform:"uppercase", letterSpacing:".05em" }}>ציונים ({data.grades.length} ניסיונות)</p>
+                    <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
+                      {data.grades.map((g, i) => (
+                        <div key={i} style={{ display:"flex", alignItems:"center", gap:"8px", background:"var(--bg-page)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", padding:"7px 12px" }}>
+                          <div style={{ width:"34px", height:"34px", borderRadius:"50%", background:scoreColor(g.score), color:"#fff", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"12px", fontWeight:800 }}>{g.score}</div>
+                          <div>
+                            <p style={{ margin:0, fontSize:"12px", fontWeight:600, color:"var(--text-primary)" }}>ניסיון {data.grades.length - i}</p>
+                            <p style={{ margin:0, fontSize:"11px", color:"var(--text-muted)" }}>{new Date(g.gradedAt).toLocaleDateString("he-IL")}</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                )}
+
+                {/* Chat messages */}
+                {!loading[m.id] && msgs.length > 0 && (
+                  <div>
+                    <p style={{ margin:"0 0 8px", fontSize:"11px", fontWeight:700, color:"var(--text-muted)", textTransform:"uppercase", letterSpacing:".05em" }}>שיחה ({msgs.length} הודעות)</p>
+                    <div style={{ display:"flex", flexDirection:"column", gap:"8px", maxHeight:"320px", overflowY:"auto" }}>
+                      {msgs.map(msg => {
+                        const isBot = msg.sender === "bot";
+                        return (
+                          <div key={msg.id} style={{ display:"flex", gap:"7px", flexDirection:isBot?"row":"row-reverse" }}>
+                            <div style={{ width:"26px", height:"26px", borderRadius:"50%", background:isBot?"#6366f1":"#9ca3af", display:"flex", alignItems:"center", justifyContent:"center", fontSize:"12px", flexShrink:0 }}>
+                              {isBot?"🧠":"👤"}
+                            </div>
+                            <div style={{ maxWidth:"80%", padding:"7px 11px", borderRadius:isBot?"12px 12px 12px 4px":"12px 12px 4px 12px", background:isBot?"var(--msg-bot-bg)":"var(--msg-user-bg)", border:isBot?"1px solid var(--border)":"none", direction:"rtl", textAlign:"right" }}>
+                              <span style={{ fontSize:"12px", lineHeight:1.6 }}>{msg.text}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {!loading[m.id] && !data?.grades?.length && !msgs.length && (
+                  <p style={{ color:"var(--text-muted)", fontSize:"13px", margin:0 }}>לא הגיש עדיין על משימה זו</p>
+                )}
               </div>
-            ) : <SessionBlock key={sess.id} session={sess} idx={i}/>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── Extract PDF text (for lecturer) ──────────────────────────────────────────
-async function extractPDFText(file) {
-  const pdfjs = await import("pdfjs-dist");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
-  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
-  let text = "";
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const content = await (await pdf.getPage(i)).getTextContent();
-    text += content.items.map(it => it.str).join(" ") + "\n";
-  }
-  return text.trim();
-}
-
-// ── Add mission modal ─────────────────────────────────────────────────────────
-function AddMissionModal({ classId, onDone, onClose }) {
-  const [title,      setTitle]      = useState("");
-  const [desc,       setDesc]       = useState("");
-  const [pdfTitle,   setPdfTitle]   = useState("");
-  const [pdfText,    setPdfText]    = useState("");
-  const [uploading,  setUploading]  = useState(false);
-  const [loading,    setLoading]    = useState(false);
-  const [error,      setError]      = useState("");
-
-  const handlePdf = async (file) => {
-    setUploading(true); setError("");
-    try {
-      const text = await extractPDFText(file);
-      if (text.replace(/\s+/g," ").trim().length < 100) {
-        setError("הקובץ לא הכיל טקסט שניתן לחלץ"); return;
-      }
-      setPdfTitle(file.name.replace(".pdf",""));
-      setPdfText(text.slice(0, 50000));
-    } catch (err) { setError(err.message); }
-    finally { setUploading(false); }
-  };
-
-  const submit = async () => {
-    if (!title.trim() || loading) return;
-    setLoading(true); setError("");
-    try {
-      await addMissionToClass(classId, { title, description: desc, pdfTitle: pdfTitle||undefined, pdfText: pdfText||undefined });
-      onDone();
-    } catch (err) { setError(err.message); }
-    finally { setLoading(false); }
-  };
-
-  const inp = { width:"100%", padding:"10px 12px", boxSizing:"border-box", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", background:"var(--bg-input)", color:"var(--text-primary)", fontSize:"14px", outline:"none", fontFamily:"inherit" };
-
-  return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:500 }}>
-      <div style={{ background:"var(--bg-card)", borderRadius:"var(--radius-lg)", padding:"28px 24px", width:"440px", maxWidth:"94vw", boxShadow:"0 20px 50px rgba(0,0,0,.3)", direction:"rtl" }}>
-        <h3 style={{ margin:"0 0 16px", fontSize:"16px", fontWeight:700, color:"var(--text-primary)" }}>📋 הוסף משימה חדשה</h3>
-        <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
-          <div>
-            <label style={{ fontSize:"12px", fontWeight:600, color:"var(--text-secondary)", display:"block", marginBottom:"5px" }}>כותרת המשימה *</label>
-            <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="למשל: קריאת פרק 3 וסיכום..." style={inp}/>
-          </div>
-          <div>
-            <label style={{ fontSize:"12px", fontWeight:600, color:"var(--text-secondary)", display:"block", marginBottom:"5px" }}>תיאור / הוראות</label>
-            <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="פירוט, הנחיות..." rows={3}
-              style={{ ...inp, resize:"vertical" }}/>
-          </div>
-          {/* PDF upload */}
-          <div>
-            <label style={{ fontSize:"12px", fontWeight:600, color:"var(--text-secondary)", display:"block", marginBottom:"5px" }}>PDF מצורף (אופציונלי)</label>
-            {pdfTitle ? (
-              <div style={{ display:"flex", alignItems:"center", gap:"8px", padding:"8px 12px", background:"var(--brand-light)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)" }}>
-                <span style={{ fontSize:"16px" }}>📄</span>
-                <span style={{ fontSize:"13px", color:"var(--brand)", fontWeight:600, flex:1 }}>{pdfTitle}</span>
-                <button onClick={()=>{ setPdfTitle(""); setPdfText(""); }} style={{ background:"none", border:"none", color:"var(--text-muted)", cursor:"pointer", fontSize:"16px" }}>✕</button>
-              </div>
-            ) : (
-              <label style={{ display:"flex", alignItems:"center", gap:"8px", padding:"10px 12px", border:"1.5px dashed var(--border)", borderRadius:"var(--radius-sm)", cursor:uploading?"not-allowed":"pointer", color:"var(--text-muted)", fontSize:"13px" }}>
-                {uploading ? "⏳ מחלץ טקסט..." : "📎 לחץ להעלאת PDF"}
-                <input type="file" accept=".pdf" disabled={uploading} style={{ display:"none" }}
-                  onChange={e=>{ const f=e.target.files?.[0]; if(f) handlePdf(f); e.target.value=""; }}/>
-              </label>
             )}
           </div>
-          {error && <p style={{ color:"#ef4444", fontSize:"13px", margin:0 }}>{error}</p>}
-          <div style={{ display:"flex", gap:"8px", justifyContent:"flex-end" }}>
-            <button onClick={onClose} style={{ background:"transparent", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", padding:"9px 18px", color:"var(--text-secondary)", cursor:"pointer", fontFamily:"inherit", fontSize:"13px" }}>ביטול</button>
-            <button onClick={submit} disabled={!title.trim()||loading||uploading} style={{ background:(!title.trim()||loading)?"var(--text-muted)":"var(--brand)", border:"none", borderRadius:"var(--radius-sm)", padding:"9px 20px", color:"#fff", fontWeight:700, fontSize:"13px", cursor:!title.trim()?"not-allowed":"pointer", fontFamily:"inherit" }}>
-              {loading?"שומר...":"הוסף משימה"}
-            </button>
-          </div>
-        </div>
-      </div>
+        );
+      })}
     </div>
   );
 }
-
 
 // ── Submissions view (all students who worked on a mission) ──────────────────
 function SubmissionsView({ cls, mission, onBack }) {
@@ -497,11 +339,7 @@ function ClassDetail({ cls, onBack }) {
   }
 
   if (selectedStudent) {
-    return (
-      <div style={{ display:"flex", flexDirection:"column", gap:"16px" }}>
-        <StudentDetail student={selectedStudent} onBack={()=>setSelectedStudent(null)}/>
-      </div>
-    );
+    return <StudentInClassView student={selectedStudent} cls={cls} onBack={()=>setSelectedStudent(null)}/>;
   }
 
   return (
