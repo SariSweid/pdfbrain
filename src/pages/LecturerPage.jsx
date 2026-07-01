@@ -6,7 +6,7 @@ import {
   getClassStudents, getClassMissions, addMissionToClass, deleteMission,
   getStudentDocuments, getStudentHistory, getStudentMessages,
   getStudentDocumentSessions,
-  getAllMissionSubmissions, getStudentMissionMessages,
+  getAllMissionSubmissions, getStudentMissionMessages, getStudentMissionGrades,
 } from "../lib/localStore";
 import { isFirebaseConfigured } from "../lib/firebase";
 
@@ -238,67 +238,90 @@ function DocRow({ doc, studentUid }) {
   );
 }
 
+// ── Extract PDF text (for lecturer) ──────────────────────────────────────────
+async function extractPDFText(file) {
+  const pdfjs = await import("pdfjs-dist");
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+  const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+  let text = "";
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const content = await (await pdf.getPage(i)).getTextContent();
+    text += content.items.map(it => it.str).join(" ") + "\n";
+  }
+  return text.trim();
+}
+
 // ── Add mission modal ─────────────────────────────────────────────────────────
 function AddMissionModal({ classId, onDone, onClose }) {
-  const [title, setTitle]       = useState("");
-  const [desc,  setDesc]        = useState("");
-  const [loading, setLoading]   = useState(false);
-  const [error,   setError]     = useState("");
+  const [title,      setTitle]      = useState("");
+  const [desc,       setDesc]       = useState("");
+  const [pdfTitle,   setPdfTitle]   = useState("");
+  const [pdfText,    setPdfText]    = useState("");
+  const [uploading,  setUploading]  = useState(false);
+  const [loading,    setLoading]    = useState(false);
+  const [error,      setError]      = useState("");
+
+  const handlePdf = async (file) => {
+    setUploading(true); setError("");
+    try {
+      const text = await extractPDFText(file);
+      if (text.replace(/\s+/g," ").trim().length < 100) {
+        setError("הקובץ לא הכיל טקסט שניתן לחלץ"); return;
+      }
+      setPdfTitle(file.name.replace(".pdf",""));
+      setPdfText(text.slice(0, 50000));
+    } catch (err) { setError(err.message); }
+    finally { setUploading(false); }
+  };
 
   const submit = async () => {
     if (!title.trim() || loading) return;
     setLoading(true); setError("");
     try {
-      await addMissionToClass(classId, { title, description: desc });
+      await addMissionToClass(classId, { title, description: desc, pdfTitle: pdfTitle||undefined, pdfText: pdfText||undefined });
       onDone();
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
   };
 
+  const inp = { width:"100%", padding:"10px 12px", boxSizing:"border-box", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", background:"var(--bg-input)", color:"var(--text-primary)", fontSize:"14px", outline:"none", fontFamily:"inherit" };
+
   return (
-    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.45)",
-      display:"flex", alignItems:"center", justifyContent:"center", zIndex:500 }}>
-      <div style={{ background:"var(--bg-card)", borderRadius:"var(--radius-lg)",
-        padding:"28px 24px", width:"420px", maxWidth:"94vw",
-        boxShadow:"0 20px 50px rgba(0,0,0,.3)", direction:"rtl" }}>
-        <h3 style={{ margin:"0 0 16px", fontSize:"16px", fontWeight:700, color:"var(--text-primary)" }}>
-          📋 הוסף משימה חדשה
-        </h3>
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,.45)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:500 }}>
+      <div style={{ background:"var(--bg-card)", borderRadius:"var(--radius-lg)", padding:"28px 24px", width:"440px", maxWidth:"94vw", boxShadow:"0 20px 50px rgba(0,0,0,.3)", direction:"rtl" }}>
+        <h3 style={{ margin:"0 0 16px", fontSize:"16px", fontWeight:700, color:"var(--text-primary)" }}>📋 הוסף משימה חדשה</h3>
         <div style={{ display:"flex", flexDirection:"column", gap:"12px" }}>
           <div>
-            <label style={{ fontSize:"12px", fontWeight:600, color:"var(--text-secondary)",
-              display:"block", marginBottom:"5px" }}>כותרת המשימה *</label>
-            <input value={title} onChange={e=>setTitle(e.target.value)}
-              placeholder="למשל: קריאת פרק 3 וסיכום..."
-              style={{ width:"100%", padding:"10px 12px", boxSizing:"border-box",
-                border:"1px solid var(--border)", borderRadius:"var(--radius-sm)",
-                background:"var(--bg-input)", color:"var(--text-primary)",
-                fontSize:"14px", outline:"none", fontFamily:"inherit" }}/>
+            <label style={{ fontSize:"12px", fontWeight:600, color:"var(--text-secondary)", display:"block", marginBottom:"5px" }}>כותרת המשימה *</label>
+            <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="למשל: קריאת פרק 3 וסיכום..." style={inp}/>
           </div>
           <div>
-            <label style={{ fontSize:"12px", fontWeight:600, color:"var(--text-secondary)",
-              display:"block", marginBottom:"5px" }}>תיאור / הוראות</label>
-            <textarea value={desc} onChange={e=>setDesc(e.target.value)}
-              placeholder="הוסף פירוט, הנחיות, קישורים..."
-              rows={4}
-              style={{ width:"100%", padding:"10px 12px", boxSizing:"border-box",
-                border:"1px solid var(--border)", borderRadius:"var(--radius-sm)",
-                background:"var(--bg-input)", color:"var(--text-primary)",
-                fontSize:"14px", outline:"none", fontFamily:"inherit",
-                resize:"vertical" }}/>
+            <label style={{ fontSize:"12px", fontWeight:600, color:"var(--text-secondary)", display:"block", marginBottom:"5px" }}>תיאור / הוראות</label>
+            <textarea value={desc} onChange={e=>setDesc(e.target.value)} placeholder="פירוט, הנחיות..." rows={3}
+              style={{ ...inp, resize:"vertical" }}/>
+          </div>
+          {/* PDF upload */}
+          <div>
+            <label style={{ fontSize:"12px", fontWeight:600, color:"var(--text-secondary)", display:"block", marginBottom:"5px" }}>PDF מצורף (אופציונלי)</label>
+            {pdfTitle ? (
+              <div style={{ display:"flex", alignItems:"center", gap:"8px", padding:"8px 12px", background:"var(--brand-light)", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)" }}>
+                <span style={{ fontSize:"16px" }}>📄</span>
+                <span style={{ fontSize:"13px", color:"var(--brand)", fontWeight:600, flex:1 }}>{pdfTitle}</span>
+                <button onClick={()=>{ setPdfTitle(""); setPdfText(""); }} style={{ background:"none", border:"none", color:"var(--text-muted)", cursor:"pointer", fontSize:"16px" }}>✕</button>
+              </div>
+            ) : (
+              <label style={{ display:"flex", alignItems:"center", gap:"8px", padding:"10px 12px", border:"1.5px dashed var(--border)", borderRadius:"var(--radius-sm)", cursor:uploading?"not-allowed":"pointer", color:"var(--text-muted)", fontSize:"13px" }}>
+                {uploading ? "⏳ מחלץ טקסט..." : "📎 לחץ להעלאת PDF"}
+                <input type="file" accept=".pdf" disabled={uploading} style={{ display:"none" }}
+                  onChange={e=>{ const f=e.target.files?.[0]; if(f) handlePdf(f); e.target.value=""; }}/>
+              </label>
+            )}
           </div>
           {error && <p style={{ color:"#ef4444", fontSize:"13px", margin:0 }}>{error}</p>}
           <div style={{ display:"flex", gap:"8px", justifyContent:"flex-end" }}>
-            <button onClick={onClose} style={{ background:"transparent",
-              border:"1px solid var(--border)", borderRadius:"var(--radius-sm)",
-              padding:"9px 18px", color:"var(--text-secondary)", cursor:"pointer",
-              fontFamily:"inherit", fontSize:"13px" }}>ביטול</button>
-            <button onClick={submit} disabled={!title.trim() || loading} style={{
-              background: !title.trim() ? "var(--text-muted)" : "var(--brand)",
-              border:"none", borderRadius:"var(--radius-sm)", padding:"9px 20px",
-              color:"#fff", fontWeight:700, fontSize:"13px",
-              cursor: !title.trim() ? "not-allowed" : "pointer", fontFamily:"inherit" }}>
-              {loading ? "שומר..." : "הוסף משימה"}
+            <button onClick={onClose} style={{ background:"transparent", border:"1px solid var(--border)", borderRadius:"var(--radius-sm)", padding:"9px 18px", color:"var(--text-secondary)", cursor:"pointer", fontFamily:"inherit", fontSize:"13px" }}>ביטול</button>
+            <button onClick={submit} disabled={!title.trim()||loading||uploading} style={{ background:(!title.trim()||loading)?"var(--text-muted)":"var(--brand)", border:"none", borderRadius:"var(--radius-sm)", padding:"9px 20px", color:"#fff", fontWeight:700, fontSize:"13px", cursor:!title.trim()?"not-allowed":"pointer", fontFamily:"inherit" }}>
+              {loading?"שומר...":"הוסף משימה"}
             </button>
           </div>
         </div>
@@ -320,8 +343,11 @@ function SubmissionsView({ cls, mission, onBack }) {
 
   const openSubmission = async (sub) => {
     setLoadingMsgs(true);
-    const msgs = await getStudentMissionMessages(cls.id, mission.id, sub.uid).catch(() => []);
-    setViewing({ submission: sub, messages: msgs });
+    const [msgs, grds] = await Promise.all([
+      getStudentMissionMessages(cls.id, mission.id, sub.uid).catch(() => []),
+      getStudentMissionGrades(cls.id, mission.id, sub.uid).catch(() => []),
+    ]);
+    setViewing({ submission: sub, messages: msgs, grades: grds });
     setLoadingMsgs(false);
   };
 
@@ -329,7 +355,7 @@ function SubmissionsView({ cls, mission, onBack }) {
     const { submission: sub, messages } = viewing;
     return (
       <div style={{ display:"flex", flexDirection:"column", gap:"14px" }}>
-        <div style={{ display:"flex", alignItems:"center", gap:"10px" }}>
+        <div style={{ display:"flex", alignItems:"center", gap:"10px", flexWrap:"wrap" }}>
           <button onClick={() => setViewing(null)} style={{ background:"transparent",
             border:"1px solid var(--border)", borderRadius:"var(--radius-sm)",
             padding:"5px 12px", color:"var(--text-secondary)", cursor:"pointer",
@@ -339,11 +365,26 @@ function SubmissionsView({ cls, mission, onBack }) {
               👨‍🎓 {sub.displayName || sub.email || sub.uid}
             </p>
             {sub.pdfTitle && (
-              <p style={{ margin:"2px 0 0", fontSize:"12px", color:"var(--text-muted)" }}>
-                📄 {sub.pdfTitle}
-              </p>
+              <p style={{ margin:"2px 0 0", fontSize:"12px", color:"var(--text-muted)" }}>📄 {sub.pdfTitle}</p>
             )}
           </div>
+          {/* Grade history badges */}
+          {viewing.grades?.length > 0 && (
+            <div style={{ display:"flex", gap:"6px", alignItems:"center" }}>
+              {viewing.grades.map((g, i) => (
+                <div key={i} title={`ניסיון ${viewing.grades.length-i}: ${g.feedback}`}
+                  style={{ width:"36px", height:"36px", borderRadius:"50%",
+                    background: g.score>=80?"#22c55e":g.score>=60?"#f59e0b":"#ef4444",
+                    color:"#fff", display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:"12px", fontWeight:800, cursor:"help" }}>
+                  {g.score}
+                </div>
+              ))}
+              <span style={{ fontSize:"11px", color:"var(--text-muted)" }}>
+                {viewing.grades.length} ניסיון{viewing.grades.length>1?"ות":""}
+              </span>
+            </div>
+          )}
         </div>
         <div style={{ background:"var(--bg-card)", border:"1px solid var(--border)",
           borderRadius:"var(--radius-md)", overflow:"hidden" }}>

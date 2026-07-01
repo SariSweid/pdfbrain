@@ -776,3 +776,49 @@ export async function getStudentMissionMessages(classId, missionId, studentUid) 
     return snap.docs.map(d => d.data()).sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
   } catch { return []; }
 }
+
+// ── Mission grades (permanent — never deleted on redo) ────────────────────────
+
+export async function saveMissionGrade(classId, missionId, gradeData) {
+  const uid = auth?.currentUser?.uid;
+  if (!uid || !isFirebaseConfigured || !db) return;
+  try {
+    const gradeId = `grade_${Date.now()}`;
+    // Save to permanent grades subcollection
+    await setDoc(
+      doc(db, "classes", classId, "missions", missionId, "submissions", uid, "grades", gradeId),
+      { ...gradeData, uid, gradedAt: Date.now() }
+    );
+    // Also update submission summary (latest grade)
+    await setDoc(
+      doc(db, "classes", classId, "missions", missionId, "submissions", uid),
+      { latestGrade: gradeData.score, lastGradedAt: Date.now(), uid, email: auth.currentUser.email ?? "" },
+      { merge: true }
+    );
+  } catch (err) {
+    console.error("saveMissionGrade failed:", err);
+  }
+}
+
+// Student: get own grade history for a mission
+export async function getMyMissionGrades(classId, missionId) {
+  const uid = auth?.currentUser?.uid;
+  if (!uid || !isFirebaseConfigured || !db) return [];
+  try {
+    const snap = await getDocs(
+      collection(db, "classes", classId, "missions", missionId, "submissions", uid, "grades")
+    );
+    return snap.docs.map(d => d.data()).sort((a, b) => (b.gradedAt ?? 0) - (a.gradedAt ?? 0));
+  } catch { return []; }
+}
+
+// Lecturer: get a student's grade history for a mission
+export async function getStudentMissionGrades(classId, missionId, studentUid) {
+  if (!isFirebaseConfigured || !db) return [];
+  try {
+    const snap = await getDocs(
+      collection(db, "classes", classId, "missions", missionId, "submissions", studentUid, "grades")
+    );
+    return snap.docs.map(d => d.data()).sort((a, b) => (b.gradedAt ?? 0) - (a.gradedAt ?? 0));
+  } catch { return []; }
+}
