@@ -656,7 +656,7 @@ export async function getStudentClasses() {
 
 // ── Missions ──────────────────────────────────────────────────────────────────
 
-export async function addMissionToClass(classId, { title, description }) {
+export async function addMissionToClass(classId, { title, description, pdfTitle, pdfText }) {
   const uid = auth?.currentUser?.uid;
   if (!uid || !isFirebaseConfigured || !db)
     throw new Error("חיבור לפיירבייס נדרש");
@@ -669,6 +669,9 @@ export async function addMissionToClass(classId, { title, description }) {
     classId,
     lecturerUid: uid,
     createdAt:   Date.now(),
+    // Lecturer PDF — optional, used as base document in student chat
+    ...(pdfTitle ? { pdfTitle } : {}),
+    ...(pdfText  ? { pdfText  } : {}),
   };
   await setDoc(doc(db, "classes", classId, "missions", missionId), mission);
   return mission;
