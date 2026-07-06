@@ -1,5 +1,6 @@
 import * as pdfjs from "pdfjs-dist";
 import { saveDocument, getDocuments, appendMessage, getMessages } from "../../lib/localStore";
+import { callClaudeMultiturn } from "../../lib/anthropicClient";
 
 // pdfjs worker
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
@@ -7,12 +8,6 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString();
 
-const ANTHROPIC_HEADERS = {
-  "Content-Type": "application/json",
-  "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY,
-  "anthropic-version": "2023-06-01",
-  "anthropic-dangerous-direct-browser-access": "true",
-};
 
 // ── Extract text from a PDF file ─────────────────────────────────────────────
 export async function extractTextFromPDF(file) {
@@ -82,24 +77,11 @@ ${document.extractedText || document.title}`;
   }));
   claudeMessages.push({ role: "user", content: question });
 
-  const response = await fetch("/api/claude", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1000,
-      system,
-      messages: claudeMessages,
-    }),
+  const botText = await callClaudeMultiturn({
+    system,
+    messages: claudeMessages,
+    maxTokens: 1000,
   });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || `שגיאת API: ${response.status}`);
-  }
-
-  const data = await response.json();
-  const botText = data.content?.[0]?.text ?? "לא הצלחתי לקבל תשובה.";
 
   const msgTs = Date.now();
   const botMessage = { id: crypto.randomUUID(), sender: "bot", text: botText, createdAt: msgTs + 1 };
@@ -123,28 +105,12 @@ export async function startEducatorSession(document) {
 המאמר:
 ${document.extractedText?.slice(0, 8000) || document.title}`;
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: ANTHROPIC_HEADERS,
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 600,
-      system,
-      messages: [
-        {
-          role: "user",
-          content: "התחל את השיחה החינוכית. הצג את עצמך בקצרה, ספר על המאמר שהועלה, ושאל את השאלה הראשונה שתעזור לסטודנט להבין את המאמר.",
-        },
-      ],
-    }),
+  const data_text = await callClaudeMultiturn({
+    system,
+    messages: [{ role: "user", content: "התחל את השיחה החינוכית. הצג את עצמך בקצרה, ספר על המאמר שהועלה, ושאל את השאלה הראשונה שתעזור לסטודנט להבין את המאמר." }],
+    maxTokens: 600,
   });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || `שגיאת API: ${response.status}`);
-  }
-
-  const data = await response.json();
+  const data = { content: [{ text: data_text }] };
   const botText = data.content?.[0]?.text ?? "שלום! בואו נלמד את המאמר יחד.";
 
   const botMessage = { id: crypto.randomUUID(), sender: "bot", text: botText, createdAt: Date.now() };
@@ -158,17 +124,9 @@ export async function scoreConversation(document, chatHistory) {
     .map((m) => `${m.sender === "user" ? "סטודנט" : "מורה"}: ${m.text}`)
     .join("\n\n");
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: ANTHROPIC_HEADERS,
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 800,
-      system: `אתה מעריך אקדמי שמדרג שיחות בין סטודנטים למורה על מאמר מדעי.`,
-      messages: [
-        {
-          role: "user",
-          content: `להלן שיחה בין סטודנט למורה על המאמר "${document.title}".
+  const scoreText = await callClaudeMultiturn({
+    system: `אתה מעריך אקדמי שמדרג שיחות בין סטודנטים למורה על מאמר מדעי.`,
+    messages: [{ role: "user", content: `להלן שיחה בין סטודנט למורה על המאמר "${document.title}".
 הערך את תשובות הסטודנט ותן:
 1. **ציון כולל** (0-100)
 2. **איכות התשובות** — האם הסטודנט הבין את המאמר?
@@ -177,48 +135,18 @@ export async function scoreConversation(document, chatHistory) {
 5. **המלצה** — מה כדאי לקרוא/ללמוד עוד?
 
 השיחה:
-${historyText}`,
-        },
-      ],
-    }),
+${historyText}` }],
+    maxTokens: 800,
   });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(err.error?.message || `שגיאת API: ${response.status}`);
-  }
-
-  const data = await response.json();
+  const data = { content: [{ text: scoreText }] };
   return data.content?.[0]?.text ?? "לא הצלחתי לחשב ציון.";
 }
 
 // ── Generate a full summary/analysis (kept for DocumentAnalysisPanel) ─────────
 export async function generateSummary(document) {
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: ANTHROPIC_HEADERS,
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1500,
-      system: "אתה מנתח מאמרים אקדמיים. ספק ניתוח מקיף ומובנה.",
-      messages: [
-        {
-          role: "user",
-          content: `נתח את המאמר הבא וספק:
-1. **תקציר** (3-4 משפטים)
-2. **שאלת המחקר הראשית**
-3. **מתודולוגיה**
-4. **ממצאים עיקריים**
-5. **אלגוריתמים/שיטות** (ציין איפה הם מופיעים במאמר)
-6. **מסקנות**
-
-המאמר:
-${document.extractedText?.slice(0, 8000) || document.title}`,
-        },
-      ],
-    }),
-  });
-
-  const data = await response.json();
-  return data.content?.[0]?.text ?? "לא הצלחתי לנתח.";
+  return await callClaudeMultiturn({
+    system: "אתה מנתח מאמרים אקדמיים. ספק ניתוח מקיף ומובנה.",
+    messages: [{ role: "user", content: `נתח את המאמר הבא וספק:\n1. **תקציר** (3-4 משפטים)\n2. **שאלת המחקר הראשית**\n3. **מתודולוגיה**\n4. **ממצאים עיקריים**\n5. **אלגוריתמים/שיטות** (ציין איפה הם מופיעים במאמר)\n6. **מסקנות**\n\nהמאמר:\n${document.extractedText?.slice(0, 8000) || document.title}` }],
+    maxTokens: 1500,
+  }).catch(() => "לא הצלחתי לנתח.");
 }
