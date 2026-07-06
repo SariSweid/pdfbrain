@@ -6,6 +6,7 @@ client/.env.local
 
 # Server
 server/node_modules/
+server/.env
 
 # General
 .DS_Store
