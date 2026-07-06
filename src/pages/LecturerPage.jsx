@@ -299,7 +299,7 @@ function ClassOverview({ cls }) {
       {/* Groups */}
       <GroupCard emoji="💪" title="סטודנטים חזקים" subtitle="ציון ממוצע 80 ומעלה" students={strong} color="#22c55e"/>
       <GroupCard emoji="🎯" title="סטודנטים בינוניים" subtitle="ציון ממוצע 55–79" students={medium} color="#f59e0b"/>
-      <GroupCard emoji="⚠️" title="זקוקים לתמיכה" subtitle="ציון ממוצע מתחת ל-60" students={weak} color="#ef4444"/>
+      <GroupCard emoji="⚠️" title="זקוקים לתמיכה" subtitle="ציון ממוצע מתחת ל-55" students={weak} color="#ef4444"/>
       {none.length > 0 && (
         <div style={{ background:"var(--bg-card)", border:"1px solid var(--border)",
           borderRadius:"var(--radius-md)", padding:"12px 16px" }}>
